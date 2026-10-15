@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.DS_Store
+*.log
+.env
+.env.local
+
+# Capacitor native projects are generated (npx cap add android)
+android/
+ios/
+*.apk
+*.aab

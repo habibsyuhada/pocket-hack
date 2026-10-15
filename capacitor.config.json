@@ -1,0 +1,11 @@
+{
+  "appId": "com.habibsyuhada.pockethack",
+  "appName": "Pocket Hack",
+  "webDir": "dist",
+  "android": {
+    "backgroundColor": "#050807"
+  },
+  "server": {
+    "androidScheme": "https"
+  }
+}
