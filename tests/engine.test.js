@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { newProfile, newRun, toggleTool, ramUsed, atLeast, device, visibleFiles, reachable } from '../src/engine/core.js';
+import { newProfile, newRun, atLeast, device, visibleFiles, reachable } from '../src/engine/core.js';
 import { getActions, exec, objectives, finish, endings } from '../src/engine/actions.js';
 import m00 from '../src/sites/s00_kafe.js';
 import m01 from '../src/sites/s01_blueprint.js';
@@ -16,16 +16,12 @@ describe('core', () => {
     expect(atLeast('none', 'guest')).toBe(false);
   });
 
-  it('RAM budget blocks over-activation', () => {
+  it('fresh profile owns keyloom + mender, not cipher/skeleton', () => {
     const p = newProfile();
-    p.ram = 2;
-    p.tools.skeleton = true;
-    // keyloom(2) already active -> skeleton(2) must fail
-    expect(ramUsed(p)).toBe(2);
-    const r = toggleTool(p, 'skeleton');
-    expect(r.ok).toBe(false);
-    toggleTool(p, 'keyloom'); // free 2
-    expect(toggleTool(p, 'skeleton').ok).toBe(true);
+    expect(p.tools.keyloom).toBe(true);
+    expect(p.tools.mender).toBe(true);
+    expect(p.tools.cipher).toBe(false);
+    expect(p.tools.skeleton).toBe(false);
   });
 });
 

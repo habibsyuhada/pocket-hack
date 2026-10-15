@@ -1,5 +1,5 @@
 import { SITES, siteById } from '../sites/index.js';
-import { newProfile, newRun, TOOLS, toggleTool, ramUsed, toolActive, LEVEL_LABEL, atLeast, device, visibleFiles } from '../engine/core.js';
+import { newProfile, newRun, TOOLS, LEVEL_LABEL, atLeast, device, visibleFiles } from '../engine/core.js';
 import { getActions, getChoices, exec, objectives, hint, endings, finish } from '../engine/actions.js';
 import { CITY, WORLD_NODES, DIFF_LABEL, nodeFor, worldNodes, nodeState, availableJobs } from '../game/world.js';
 import { MARKET, buy, canBuy, owned } from '../game/market.js';
@@ -204,10 +204,9 @@ export class App {
       return this.paneProfile();
     }
     if (this.scene === 'net') {
-      if (this.netTab === 'net') return this.paneNet();
-      if (this.netTab === 'rig') return this.paneRig();
       if (this.netTab === 'obj') return this.paneObjectives();
-      return this.paneTerm();
+      if (this.netTab === 'log') return this.paneTerm();
+      return this.paneNet();
     }
     if (this.devTab === 'files') return this.paneFiles();
     if (this.devTab === 'sys') return this.paneSystem();
@@ -236,7 +235,8 @@ export class App {
         h('p', {}, n.short),
         h('div', { class: 'foot' },
           st === 'cleared' && h('span', { class: 'badge' }, '✓ selesai'),
-          h('span', { class: 'reward' }, `+${n.site.reward} ◈ · +${n.repReward} rep`))));
+          h('span', { class: 'reward' }, `+${n.site.reward} ◈ · +${n.repReward} rep`)),
+        h('button', { class: 'jackin', onclick: () => this.jackIn(n.id) }, '▸ JACK IN')));
     } else {
       out.push(h('div', { class: 'empty' }, 'Ketuk sebuah pin di peta untuk melihat targetnya.'));
     }
@@ -289,9 +289,16 @@ export class App {
       h('div', { class: 'stat-row' },
         h('div', { class: 'stat' }, h('b', {}, String(this.profile.credits)), h('small', {}, 'kredit')),
         h('div', { class: 'stat' }, h('b', {}, `${cleared}/${WORLD_NODES.length}`), h('small', {}, 'target selesai')),
-        h('div', { class: 'stat' }, h('b', {}, `${ramUsed(this.profile)}/${this.profile.ram}`), h('small', {}, 'RAM'))),
-      h('div', { class: 'section-h' }, 'Arsip (file tersimpan)')
+        h('div', { class: 'stat' }, h('b', {}, String(Object.values(this.profile.tools).filter(Boolean).length)), h('small', {}, 'tool dimiliki'))),
+      h('div', { class: 'section-h' }, 'Tool (otomatis siap dipakai)')
     ];
+    for (const t of Object.values(TOOLS)) {
+      const ownd = this.profile.tools[t.id];
+      out.push(h('div', { class: 'tool' + (ownd ? '' : ' locked') },
+        h('div', { class: 'hd' }, h('b', {}, t.name), h('span', { class: 'cost' }, t.cmd)),
+        h('p', {}, ownd ? t.desc : '🔒 Beli di Pasar.')));
+    }
+    out.push(h('div', { class: 'section-h' }, 'Arsip (file tersimpan)'));
     if (!this.profile.archive.length) out.push(h('div', { class: 'empty' }, 'Belum ada file tersimpan.'));
     for (const f of this.profile.archive) {
       out.push(h('button', { class: 'obj', onclick: () => { this.overlay = { kind: 'read', sheet: { title: f.name, content: f.content } }; this.render(); } },
@@ -327,8 +334,12 @@ export class App {
         h('div', { class: 'st ' + (d.access !== 'none' ? 'a' : d.online && !d.statusText ? '' : 'o') },
           d.access !== 'none' ? LEVEL_LABEL[d.access] : !d.online ? 'OFFLINE' : d.statusText || 'TERLIHAT')));
     }
-    const out = [map];
-    if (!devs.length) out.push(h('div', { class: 'empty' }, 'Belum ada perangkat.\nTekan tombol SCAN di bawah.'));
+    const rigCard = h('button', { class: 'devhead rig', onclick: () => this.tapObject({ type: 'rig' }) },
+      h('div', { class: 'ic' }, '📟'),
+      h('div', { class: 'main' }, h('b', {}, 'Rig lokal'), h('small', {}, 'ketuk untuk SCAN jaringan')),
+      h('div', { class: 'tag-r', style: 'color:var(--green)' }, 'SCAN'));
+    const out = [rigCard, map];
+    if (!devs.length) out.push(h('div', { class: 'empty' }, 'Belum ada perangkat.\nKetuk kartu "Rig lokal" lalu SCAN.'));
     out.push(h('div', { class: 'section-h' }, 'Perangkat ditemukan'));
     for (const d of devs) {
       const cur = run.current === d.id;
@@ -336,28 +347,6 @@ export class App {
         h('div', { class: 'ic' }, KIND_ICON[d.kind] || '🔌'),
         h('div', { class: 'main' }, h('b', {}, d.name), h('small', {}, `${d.kind} · ${d.addr}`)),
         h('div', { class: 'tag-r' }, cur ? 'TERHUBUNG' : d.access !== 'none' ? LEVEL_LABEL[d.access] : '')));
-    }
-    return out;
-  }
-
-  paneRig() {
-    const h = this.h.bind(this);
-    const p = this.profile;
-    const used = ramUsed(p);
-    const slots = h('div', { class: 'slots' });
-    for (let i = 0; i < p.ram; i++) slots.append(h('div', { class: 'slot' + (i < used ? ' full' : '') }));
-    const out = [h('div', { class: 'ram' },
-      h('div', { class: 'top' }, h('b', {}, `${used}/${p.ram}`), h('span', { style: 'color:var(--muted)' }, 'RAM terpakai')),
-      slots,
-      h('p', { style: 'color:var(--muted);font-size:12px;margin:10px 0 0' }, 'RAM membatasi jumlah tool aktif, bukan tiap tindakan. Beli tool & upgrade di Pasar.'))];
-    for (const t of Object.values(TOOLS)) {
-      const ownd = p.tools[t.id];
-      const active = toolActive(p, t.id);
-      out.push(h('div', { class: 'tool' + (ownd ? '' : ' locked') },
-        h('div', { class: 'hd' }, h('b', {}, t.name), h('span', { class: 'cost' }, `${t.ram} RAM · ${t.cmd}`)),
-        h('p', {}, ownd ? t.desc : '🔒 Beli di Pasar.'),
-        ownd && h('button', { class: active ? '' : 'off', onclick: () => { const r = toggleTool(p, t.id); if (!r.ok) alert(r.msg); this.persist(); this.render(); } },
-          active ? 'AKTIF — tutup' : 'aktifkan')));
     }
     return out;
   }
@@ -458,54 +447,25 @@ export class App {
     return [log];
   }
 
-  // ---------- dock ----------
-  primaryAction() {
-    if (!this.ctx) return null;
-    const acts = getActions(this.ctx, this.sel);
-    return acts.find((a) => a.enabled && a.cmd !== 'INSPECT') || acts.find((a) => a.cmd !== 'INSPECT') || acts[0] || null;
-  }
-
+  // ---------- dock (flat tab bar) ----------
   dock() {
     const h = this.h.bind(this);
-    if (this.scene === 'world') {
-      const n = this.selSite ? nodeFor(this.selSite) : null;
-      const canJack = !!n;
-      return this.dockRow(
-        [['map', '🗺️', 'Peta'], ['jobs', '📡', 'Job']],
-        { label: 'JACK IN', sub: n ? n.site.code : 'pilih target', enabled: canJack, danger: false,
-          onclick: () => canJack ? this.jackIn(this.selSite) : null },
-        [['market', '🛒', 'Pasar'], ['profile', '👤', 'Profil']],
-        (id) => { this.worldTab = id; this.render(); }, this.worldTab);
-    }
-    if (this.scene === 'net') {
-      const pa = this.primaryAction();
-      return this.dockRow(
-        [['net', '🌐', 'Node'], ['rig', '🧰', 'Rig']],
-        { label: pa ? pa.cmd : '—', sub: this.selLabel(), enabled: !!pa && pa.enabled,
-          onclick: () => pa && (pa.enabled ? this.runCommand(pa.cmd, this.sel) : alert(pa.reason)) },
-        [['obj', '🎯', 'Misi'], ['log', '📟', 'Log']],
-        (id) => { this.netTab = id; this.render(); }, this.netTab);
-    }
-    const pa = this.primaryAction();
-    return this.dockRow(
-      [['files', '📁', 'File'], ['sys', '⚙️', 'Sistem']],
-      { label: pa ? pa.cmd : '—', sub: this.selLabel(), enabled: !!pa && pa.enabled,
-        onclick: () => pa && (pa.enabled ? this.runCommand(pa.cmd, this.sel) : alert(pa.reason)) },
-      [['log', '📟', 'Log'], ['_out', '⏏', 'Keluar']],
-      (id) => { if (id === '_out') this.runCommand('DISCONNECT', { type: 'rig' }); else { this.devTab = id; this.render(); } },
-      this.devTab);
-  }
-
-  dockRow(left, fab, right, onTab, active) {
-    const h = this.h.bind(this);
-    const btn = ([id, icon, label]) =>
-      h('button', { class: 'dock-btn' + (id === active ? ' on' : ''), onclick: () => onTab(id) },
-        h('span', { class: 'di' }, icon), h('span', { class: 'dl' }, label));
+    const tabs = this.scene === 'world'
+      ? [['map', '🗺️', 'Peta'], ['jobs', '📡', 'Job'], ['market', '🛒', 'Pasar'], ['profile', '👤', 'Profil']]
+      : this.scene === 'net'
+        ? [['net', '🌐', 'Node'], ['obj', '🎯', 'Misi'], ['log', '📟', 'Log']]
+        : [['files', '📁', 'File'], ['sys', '⚙️', 'Sistem'], ['log', '📟', 'Log']];
+    const active = this.curTab();
+    const onTab = (id) => {
+      if (this.scene === 'world') this.worldTab = id;
+      else if (this.scene === 'net') this.netTab = id;
+      else this.devTab = id;
+      this.render();
+    };
     const row = h('div', { class: 'dock' });
-    for (const b of left) row.append(btn(b));
-    row.append(h('button', { class: 'dock-fab' + (fab.enabled ? '' : ' off') + (fab.danger ? ' danger' : ''), onclick: fab.onclick },
-      h('span', { class: 'fab-cmd' }, fab.label), h('span', { class: 'fab-sub' }, fab.sub || '')));
-    for (const b of right) row.append(btn(b));
+    for (const [id, icon, label] of tabs)
+      row.append(h('button', { class: 'dock-btn' + (id === active ? ' on' : ''), onclick: () => onTab(id) },
+        h('span', { class: 'di' }, icon), h('span', { class: 'dl' }, label)));
     return row;
   }
 

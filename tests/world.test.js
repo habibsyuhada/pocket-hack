@@ -67,16 +67,6 @@ describe('market', () => {
     expect(p.credits).toBe(10);
   });
 
-  it('ram upgrade tier requires the previous tier', () => {
-    const p = newProfile();
-    p.credits = 1000;
-    expect(canBuy(p, MARKET.find((m) => m.id === 'ram_8')).ok).toBe(false);
-    buy(p, 'ram_6');
-    expect(p.ram).toBe(6);
-    expect(buy(p, 'ram_8').ok).toBe(true);
-    expect(p.ram).toBe(8);
-  });
-
   it('intel buy reveals the site', () => {
     const p = newProfile();
     p.credits = 200;

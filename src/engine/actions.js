@@ -1,6 +1,6 @@
 import {
   LEVEL_LABEL, TOOLS, atLeast, applyEffects, configValid, device, findFile,
-  fileVisible, lockingProc, reachable, toolActive
+  fileVisible, lockingProc, reachable
 } from './core.js';
 
 // Contextual command model: the player picks an object, the game offers the
@@ -10,7 +10,7 @@ import {
 const A = (cmd, enabled, reason = '', choose = false) => ({ cmd, enabled, reason, choose });
 
 function needTool(profile, id) {
-  return toolActive(profile, id) ? '' : `Aktifkan ${TOOLS[id].name} di RIG (${TOOLS[id].ram} RAM).`;
+  return profile.tools[id] ? '' : `Butuh tool ${TOOLS[id].name}. Beli di Pasar.`;
 }
 
 export function getActions(ctx, target) {
