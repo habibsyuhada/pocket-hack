@@ -111,7 +111,7 @@ export function getChoices(ctx, cmd, target) {
       .map((c) => ({ value: c, label: mission.creds[c].label }));
   }
   if (cmd === 'CRACK') {
-    return device(run, target.id).crack.options.map((o) => ({ value: o, label: o }));
+    return (device(run, target.id).crack?.options || []).map((o) => ({ value: o, label: o }));
   }
   if (cmd === 'DECRYPT') {
     const f = findFile(run, target);
@@ -134,11 +134,11 @@ export function getChoices(ctx, cmd, target) {
   }
   if (cmd === 'CONFIG') {
     const p = device(run, target.device).procs.find((x) => x.id === target.id);
-    return Object.entries(p.config).map(([key, field]) => ({ key, label: field.label, value: field.value, options: field.options }));
+    return Object.entries(p?.config || {}).map(([key, field]) => ({ key, label: field.label, value: field.value, options: field.options }));
   }
   if (cmd === 'CONTROL') {
     const c = device(run, target.device).controls.find((x) => x.id === target.id);
-    return c.states.map((s) => ({ value: s, label: s, current: s === c.state }));
+    return (c?.states || []).map((s) => ({ value: s, label: s, current: s === c.state }));
   }
   return [];
 }
