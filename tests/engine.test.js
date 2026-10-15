@@ -16,12 +16,11 @@ describe('core', () => {
     expect(atLeast('none', 'guest')).toBe(false);
   });
 
-  it('fresh profile owns keyloom + mender, not cipher/skeleton', () => {
+  it('fresh profile owns keyloom + mender, not cipher', () => {
     const p = newProfile();
     expect(p.tools.keyloom).toBe(true);
     expect(p.tools.mender).toBe(true);
     expect(p.tools.cipher).toBe(false);
-    expect(p.tools.skeleton).toBe(false);
   });
 });
 

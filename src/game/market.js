@@ -6,8 +6,6 @@ import { WORLD_NODES } from './world.js';
 export const MARKET = [
   { id: 'buy_cipher', name: 'Tool: Cipher', cost: 120, kind: 'tool', tool: 'cipher',
     desc: 'Membuka file terenkripsi (perintah DECRYPT).' },
-  { id: 'buy_skeleton', name: 'Tool: Skeleton Key', cost: 220, kind: 'tool', tool: 'skeleton',
-    desc: 'Memanfaatkan celah layanan (perintah EXPLOIT).' },
   { id: 'intel_s01', name: 'Intel: Lab Barat', cost: 60, kind: 'intel', site: 's01',
     desc: 'Buka lokasi "Blueprint Asli" di peta lebih awal.' },
   { id: 'intel_s03', name: 'Intel: Bursa Selatan', cost: 90, kind: 'intel', site: 's03',

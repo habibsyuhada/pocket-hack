@@ -27,7 +27,7 @@ export default {
         id: 'dvr', name: 'Perekam DVR', kind: 'Server', addr: '192.168.4.10', x: 28, y: 35,
         online: true, open: 'guest', links: ['cam'],
         inspect: 'Perekam video. Firmware fiktif DVR-9.\nAda celah debug-port (lihat catatan pemasang). Gunakan EXPLOIT.',
-        exploit: { level: 'admin', requires: 'know_flaw', text: 'Debug-port terbuka. Kamu masuk sebagai admin DVR.' },
+        exploit: { level: 'admin', text: 'Debug-port terbuka. Kamu masuk sebagai admin DVR.' },
         files: [
           { id: 'clip', name: 'clip_bukti.mp4', minAccess: 'admin', keep: true,
             content: 'REKAMAN: panel menyalin plat nomor tiap kendaraan + waktu, lalu mengunggahnya ke server luar. Bukti kuat.',

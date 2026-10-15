@@ -62,8 +62,8 @@ describe('market', () => {
   it('cannot buy without enough credits', () => {
     const p = newProfile();
     p.credits = 10;
-    expect(canBuy(p, MARKET.find((m) => m.id === 'buy_skeleton')).ok).toBe(false);
-    expect(buy(p, 'buy_skeleton').ok).toBe(false);
+    expect(canBuy(p, MARKET.find((m) => m.id === 'buy_cipher')).ok).toBe(false);
+    expect(buy(p, 'buy_cipher').ok).toBe(false);
     expect(p.credits).toBe(10);
   });
 

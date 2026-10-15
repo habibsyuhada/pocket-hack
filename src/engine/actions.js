@@ -42,9 +42,7 @@ export function getActions(ctx, target) {
         out.push(A('CRACK', !needTool(profile, 'keyloom'), needTool(profile, 'keyloom'), true));
       }
       if (d.exploit && !atLeast(d.access, d.exploit.level)) {
-        let why = needTool(profile, 'skeleton');
-        if (!why && d.exploit.requires && !run.flags.includes(d.exploit.requires)) why = 'Belum tahu celahnya. Coba INSPECT dulu.';
-        out.push(A('EXPLOIT', !why, why));
+        out.push(A('EXPLOIT', true));
       }
       if (d.elevate && d.access !== d.elevate.to) {
         const why = !atLeast(d.access, d.elevate.from) ? `Butuh akses ${LEVEL_LABEL[d.elevate.from]} dulu.` : '';

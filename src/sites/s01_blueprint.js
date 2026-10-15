@@ -137,12 +137,12 @@ export default {
   ],
   endings: [
     {
-      id: 'handover', label: 'Serahkan blueprint ke Arsitek', reward: 600, unlockTools: ['skeleton'],
+      id: 'handover', label: 'Serahkan blueprint ke Arsitek', reward: 600,
       requires: (r) => hasLocal(r, 'blueprint_asli') || (hasLocal(r, 'blueprint_backup') && !r.local.find((f) => f.id === 'blueprint_backup')?.encrypted),
       text: 'Arsitek menerima blueprint. "Kerja bersih." Kamu dibayar penuh dan membuka Skeleton Key.'
     },
     {
-      id: 'expose', label: 'Ungkap manipulasi denah', reward: 850, unlockTools: ['skeleton'],
+      id: 'expose', label: 'Ungkap manipulasi denah', reward: 850,
       requires: (r) => r.flags.includes('found_tamper'),
       text: 'Kamu serahkan blueprint sekaligus bukti pintu masuk dipindah diam-diam. Arsitek terdiam. "Ini... lebih penting dari yang kukira." Bayaran bonus masuk, dan Skeleton Key terbuka.'
     }

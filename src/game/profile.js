@@ -2,8 +2,7 @@
 export const TOOLS = {
   keyloom: { id: 'keyloom', name: 'KeyLoom', ram: 2, cmd: 'CRACK', desc: 'Menyusun kandidat kata sandi dari petunjuk yang kamu kumpulkan.' },
   mender: { id: 'mender', name: 'Mender', ram: 1, cmd: 'RECOVER', desc: 'Memulihkan file terhapus atau rusak.' },
-  cipher: { id: 'cipher', name: 'Cipher', ram: 1, cmd: 'DECRYPT', desc: 'Membuka file terkunci dengan kunci yang kamu simpulkan.' },
-  skeleton: { id: 'skeleton', name: 'Skeleton Key', ram: 2, cmd: 'EXPLOIT', desc: 'Memanfaatkan celah fiktif yang sudah ditemukan pada layanan.' }
+  cipher: { id: 'cipher', name: 'Cipher', ram: 1, cmd: 'DECRYPT', desc: 'Membuka file terkunci dengan kunci yang kamu simpulkan.' }
 };
 
 export function newProfile() {
@@ -13,7 +12,7 @@ export function newProfile() {
     rep: 0,
     ram: 4,
     upgrades: [],
-    tools: { keyloom: true, mender: true, cipher: false, skeleton: false },
+    tools: { keyloom: true, mender: true, cipher: false },
     active: ['keyloom'],
     bought: [],
     archive: [],
