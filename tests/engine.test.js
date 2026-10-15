@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { newProfile, newRun, atLeast, device, visibleFiles, reachable } from '../src/engine/core.js';
-import { getActions, exec, objectives, finish, endings } from '../src/engine/actions.js';
+import { getActions, getChoices, exec, objectives, finish, endings } from '../src/engine/actions.js';
 import m00 from '../src/sites/s00_kafe.js';
 import m01 from '../src/sites/s01_blueprint.js';
+import s03 from '../src/sites/s03_vault.js';
 
 function ctxFor(mission, profile = newProfile()) {
   return { mission, run: newRun(mission), profile };
@@ -142,5 +143,23 @@ describe('m01 two paths', () => {
     expect(endings(ctx).find((e) => e.id === 'expose').available).toBe(false);
     ctx.run.flags.push('found_tamper');
     expect(endings(ctx).find((e) => e.id === 'expose').available).toBe(true);
+  });
+});
+
+describe('s03 vault decrypt chooser (regression)', () => {
+  it('DECRYPT chooser lists key options from f.encrypted.keyOptions', () => {
+    const ctx = ctxFor(s03);
+    ctx.profile.tools.cipher = true;
+    exec(ctx, 'SCAN', { type: 'rig' });
+    exec(ctx, 'CONNECT', { type: 'device', id: 'edge' });
+    exec(ctx, 'CONNECT', { type: 'device', id: 'cold' });
+    exec(ctx, 'DOWNLOAD', { type: 'file', device: 'cold', id: 'ledger' });
+    const target = { type: 'file', local: true, id: 'ledger' };
+    const choices = getChoices(ctx, 'DECRYPT', target);
+    expect(Array.isArray(choices)).toBe(true);
+    expect(choices.map((c) => c.value)).toContain('COLD640');
+    // and decrypting with the right key opens it
+    exec(ctx, 'DECRYPT', target, 'COLD640');
+    expect(ctx.run.local.find((f) => f.id === 'ledger').encrypted).toBeFalsy();
   });
 });

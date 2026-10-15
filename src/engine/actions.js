@@ -115,7 +115,7 @@ export function getChoices(ctx, cmd, target) {
   }
   if (cmd === 'DECRYPT') {
     const f = findFile(run, target);
-    return f.keyOptions.map((k) => ({ value: k, label: k }));
+    return (f.encrypted?.keyOptions || []).map((k) => ({ value: k, label: k }));
   }
   if (cmd === 'COMPARE') {
     const f = findFile(run, target);
