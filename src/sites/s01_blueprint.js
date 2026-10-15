@@ -5,7 +5,7 @@
 const hasLocal = (run, id) => run.local.some((f) => f.id === id);
 
 export default {
-  id: 'm01',
+  id: 's01',
   code: 'A-07',
   title: 'Blueprint Asli',
   client: 'Kontak anonim "Arsitek"',

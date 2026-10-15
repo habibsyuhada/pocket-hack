@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { newProfile, newRun, toggleTool, ramUsed, atLeast, device, visibleFiles, reachable } from '../src/engine/core.js';
 import { getActions, exec, objectives, finish, endings } from '../src/engine/actions.js';
-import m00 from '../src/missions/m00_kafe.js';
-import m01 from '../src/missions/m01_blueprint.js';
+import m00 from '../src/sites/s00_kafe.js';
+import m01 from '../src/sites/s01_blueprint.js';
 
 function ctxFor(mission, profile = newProfile()) {
   return { mission, run: newRun(mission), profile };

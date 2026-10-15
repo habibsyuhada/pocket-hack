@@ -1,48 +1,12 @@
 // Pure game logic: no DOM. Everything here is a fictional simulation.
+// Profile/tool helpers live in ../game/profile.js; re-exported for convenience.
+export { TOOLS, newProfile, ramUsed, toggleTool, toolActive } from '../game/profile.js';
 
 export const LEVELS = ['none', 'guest', 'user', 'admin'];
 export const LEVEL_LABEL = { none: 'TANPA AKSES', guest: 'TAMU', user: 'USER', admin: 'ADMIN' };
 
 export const lvl = (l) => LEVELS.indexOf(l || 'none');
 export const atLeast = (have, need) => lvl(have) >= lvl(need || 'guest');
-
-export const TOOLS = {
-  keyloom: { id: 'keyloom', name: 'KeyLoom', ram: 2, cmd: 'CRACK', desc: 'Menyusun kandidat kata sandi dari petunjuk yang kamu kumpulkan.' },
-  mender: { id: 'mender', name: 'Mender', ram: 1, cmd: 'RECOVER', desc: 'Memulihkan file terhapus atau rusak.' },
-  cipher: { id: 'cipher', name: 'Cipher', ram: 1, cmd: 'DECRYPT', desc: 'Membuka file terkunci dengan kunci yang kamu simpulkan.' },
-  skeleton: { id: 'skeleton', name: 'Skeleton Key', ram: 2, cmd: 'EXPLOIT', desc: 'Memanfaatkan celah fiktif yang sudah tercatat di papan petunjuk.' }
-};
-
-export function newProfile() {
-  return {
-    credits: 0,
-    ram: 4,
-    upgrades: [],
-    tools: { keyloom: true, mender: true, cipher: false, skeleton: false },
-    active: ['keyloom'],
-    completed: {},
-    archive: []
-  };
-}
-
-export function ramUsed(profile) {
-  return profile.active.reduce((sum, id) => sum + (TOOLS[id]?.ram || 0), 0);
-}
-
-export function toggleTool(profile, id) {
-  if (!profile.tools[id]) return { ok: false, msg: 'Tool belum dimiliki.' };
-  if (profile.active.includes(id)) {
-    profile.active = profile.active.filter((t) => t !== id);
-    return { ok: true, msg: `${TOOLS[id].name} ditutup. RAM dibebaskan.` };
-  }
-  if (ramUsed(profile) + TOOLS[id].ram > profile.ram) {
-    return { ok: false, msg: `RAM tidak cukup. Tutup tool lain dulu (${ramUsed(profile)}/${profile.ram}).` };
-  }
-  profile.active.push(id);
-  return { ok: true, msg: `${TOOLS[id].name} aktif.` };
-}
-
-export const toolActive = (profile, id) => profile.active.includes(id);
 
 // ---------- run state ----------
 

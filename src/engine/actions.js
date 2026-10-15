@@ -27,9 +27,9 @@ export function getActions(ctx, target) {
     const d = device(run, target.id);
     const here = run.current === d.id;
     out.push(A('INSPECT', true));
-    if (here) {
-      out.push(A('SCAN', atLeast(d.access, 'guest'), 'Butuh akses minimal TAMU.'));
-    } else {
+    // SCAN a node once you hold access to it (reachable from the net map).
+    if (atLeast(d.access, 'guest')) out.push(A('SCAN', true));
+    if (!here) {
       let why = '';
       if (!d.online) why = 'Perangkat sedang offline.';
       else if (!reachable(run, mission, d.id)) why = 'Belum ada jalur. Kuasai perangkat yang terhubung dulu.';
@@ -185,12 +185,18 @@ export function exec(ctx, cmd, target, arg) {
       out.push({ t: 'out', text: `${d.kind} · akses kamu: ${LEVEL_LABEL[d.access]}` });
       applyEffects(run, mission, d.onInspect, out);
       break;
-    case 'CONNECT':
+    case 'CONNECT': {
       run.current = d.id;
       if (d.open && !atLeast(d.access, d.open)) d.access = d.open;
       out.push({ t: 'ok', text: `Terhubung ke ${d.name}. Akses: ${LEVEL_LABEL[d.access]}.` });
+      // Connecting reveals the devices this node can see (auto-scan).
+      for (const id of d.links || []) {
+        const x = device(run, id);
+        if (x && !x.discovered) { x.discovered = true; out.push({ t: 'out', text: `Terlihat: ${x.addr.padEnd(13)} ${x.name}${x.online ? '' : ' [OFFLINE]'}`.trimEnd() }); }
+      }
       applyEffects(run, mission, d.onConnect, out);
       break;
+    }
     case 'LOGIN': {
       const c = mission.creds[arg];
       if (!atLeast(d.access, c.level)) d.access = c.level;
@@ -324,17 +330,19 @@ export function endings(ctx) {
   return ctx.mission.endings.map((e) => ({ ...e, available: e.requires(ctx.run) }));
 }
 
-export function finish(ctx, endingId) {
+export function finish(ctx, endingId, opts = {}) {
   const { run, mission, profile } = ctx;
   const e = mission.endings.find((x) => x.id === endingId);
   run.ended = endingId;
-  const first = !profile.completed[mission.id];
+  const first = !profile.cleared[mission.id];
   const reward = first ? e.reward : Math.round(e.reward / 4);
+  const repGain = first ? (opts.repReward || 0) : Math.round((opts.repReward || 0) / 4);
   profile.credits += reward;
-  profile.completed[mission.id] = endingId;
+  profile.rep += repGain;
+  profile.cleared[mission.id] = endingId;
   for (const t of e.unlockTools || []) profile.tools[t] = true;
   for (const f of run.local) {
     if (f.keep && !profile.archive.some((a) => a.id === f.id)) profile.archive.push({ id: f.id, name: f.name, content: f.content });
   }
-  return { reward, text: e.text, unlocked: e.unlockTools || [] };
+  return { reward, rep: repGain, text: e.text, unlocked: e.unlockTools || [] };
 }

@@ -1,63 +1,80 @@
-import { MISSIONS, missionById } from '../missions/index.js';
-import { newProfile, newRun, TOOLS, toggleTool, ramUsed, toolActive, LEVEL_LABEL, atLeast, device, visibleFiles, reachable } from '../engine/core.js';
+import { SITES, siteById } from '../sites/index.js';
+import { newProfile, newRun, TOOLS, toggleTool, ramUsed, toolActive, LEVEL_LABEL, atLeast, device, visibleFiles } from '../engine/core.js';
 import { getActions, getChoices, exec, objectives, hint, endings, finish } from '../engine/actions.js';
+import { CITY, WORLD_NODES, DIFF_LABEL, nodeFor, worldNodes, nodeState, availableJobs } from '../game/world.js';
+import { MARKET, buy, canBuy, owned } from '../game/market.js';
+import { rankFor, nextRank, rankProgress } from '../game/progression.js';
 import { saveProfile, loadProfile, clearProfile, buzz } from '../platform/storage.js';
 
-const ICON = { Router: '📶', Printer: '🖨️', Gateway: '🚪', Workstation: '💻', Server: '🗄️', NAS: '💾', file: '📄', proc: '⚙️', control: '🎛️' };
+const KIND_ICON = { Router: '📶', Printer: '🖨️', Gateway: '🚪', Workstation: '💻', Server: '🗄️', NAS: '💾' };
 
 export class App {
   constructor(root) {
     this.root = root;
     this.profile = newProfile();
-    this.view = 'menu';
-    this.ctx = null;
-    this.tab = 'net';
+    this.ctx = null;                 // null = world scene
+    this.worldTab = 'map';
+    this.netTab = 'net';
+    this.devTab = 'files';
     this.sel = { type: 'rig' };
+    this.selSite = null;             // highlighted site on world map
     this.showHint = false;
     this.overlay = null;
+    this.intro = false;
   }
 
   async boot() {
     const saved = await loadProfile();
     if (saved) this.profile = { ...newProfile(), ...saved };
+    this.intro = !saved;             // first run → show intro
     this.render();
   }
 
   persist() { saveProfile(this.profile); }
 
-  // ---------- navigation ----------
-  go(view) { this.view = view; this.overlay = null; this.render(); }
+  get scene() {
+    if (!this.ctx) return 'world';
+    return this.ctx.run.current ? 'device' : 'net';
+  }
 
-  startMission(id) {
-    const m = missionById(id);
-    this.ctx = { mission: m, run: newRun(m), profile: this.profile };
-    this.tab = 'net';
+  // ---------- scene transitions ----------
+  jackIn(siteId) {
+    const site = siteById(siteId);
+    if (!site) return;
+    this.profile.discovered[siteId] = true;
+    this.ctx = { mission: site, run: newRun(site), profile: this.profile };
+    this.netTab = 'net';
     this.sel = { type: 'rig' };
     this.showHint = false;
-    this.view = 'play';
+    this.overlay = null;
+    buzz('heavy');
     this.render();
   }
 
-  // ---------- command handling ----------
+  jackOut() {
+    this.ctx = null;
+    this.worldTab = 'map';
+    this.overlay = null;
+    this.persist();
+    this.render();
+  }
+
+  // ---------- commands ----------
   runCommand(cmd, target) {
     const choosers = ['LOGIN', 'CRACK', 'DECRYPT', 'COMPARE', 'CONFIG', 'CONTROL'];
     if (choosers.includes(cmd)) { this.openChooser(cmd, target); return; }
+    const prevInside = !!this.ctx.run.current;
     const { sheet } = exec(this.ctx, cmd, target);
     buzz('light');
-    if (sheet) this.overlay = { kind: 'read', sheet };
-    this.afterAction(target);
-  }
-
-  afterAction(target) {
-    // keep selection valid; if we connected/disconnected, reset to rig/device
-    if (target?.type === 'device' && this.ctx.run.current === target.id) this.sel = { type: 'device', id: target.id };
-    this.checkEnd();
+    // CONNECT/DISCONNECT change scene → set a sensible default tab
+    if (!prevInside && this.ctx.run.current) { this.devTab = 'files'; this.sel = { type: 'device', id: this.ctx.run.current }; }
+    if (prevInside && !this.ctx.run.current) { this.netTab = 'net'; this.sel = { type: 'rig' }; }
+    this.overlay = sheet ? { kind: 'read', sheet } : null;
     this.render();
   }
 
   openChooser(cmd, target) {
-    const choices = getChoices(this.ctx, cmd, target);
-    this.overlay = { kind: 'choose', cmd, target, choices, config: {} };
+    this.overlay = { kind: 'choose', cmd, target, choices: getChoices(this.ctx, cmd, target), config: {} };
     this.render();
   }
 
@@ -66,7 +83,7 @@ export class App {
     const { sheet } = exec(this.ctx, o.cmd, o.target, value);
     buzz('light');
     this.overlay = sheet ? { kind: 'read', sheet } : null;
-    this.afterAction(o.target);
+    this.render();
   }
 
   applyConfig() {
@@ -74,126 +91,217 @@ export class App {
     for (const [key, value] of Object.entries(o.config)) exec(this.ctx, 'CONFIG', o.target, [key, value]);
     buzz('light');
     this.overlay = null;
-    this.afterAction(o.target);
+    this.render();
   }
 
-  checkEnd() {
-    const main = objectives(this.ctx).filter((o) => o.main);
-    if (main.length && main.every((o) => o.done) && !this.ctx.run._notified) {
-      this.ctx.run._notified = true;
-    }
+  // open the full command sheet for a tapped object
+  tapObject(target) {
+    this.sel = target;
+    const acts = getActions(this.ctx, target);
+    this.overlay = { kind: 'actions', target, acts };
+    this.render();
   }
 
-  submitMission(endingId) {
-    const res = finish(this.ctx, endingId);
+  submitSite(endingId) {
+    const node = nodeFor(this.ctx.mission.id);
+    const res = finish(this.ctx, endingId, { repReward: node?.repReward || 0 });
     this.persist();
     this.overlay = { kind: 'result', res };
     buzz('heavy');
     this.render();
   }
 
-  resetGame() {
-    this.profile = newProfile();
-    clearProfile();
-    this.go('menu');
+  doBuy(itemId) {
+    const r = buy(this.profile, itemId);
+    if (r.ok) { this.persist(); buzz('light'); } else { alert(r.msg); }
+    this.render();
   }
 
-  // ---------- rendering ----------
-  render() {
-    const el = document.createElement('div');
-    el.className = 'screen';
-    if (this.view === 'menu') el.append(this.vMenu());
-    else if (this.view === 'contracts') el.append(this.vContracts());
-    else if (this.view === 'play') el.append(this.vPlay());
-    if (this.overlay) el.append(this.vOverlay());
-    this.root.replaceChildren(el);
-  }
+  resetGame() { this.profile = newProfile(); clearProfile(); this.ctx = null; this.intro = true; this.render(); }
 
+  // ---------- DOM helper ----------
   h(tag, props = {}, ...kids) {
     const e = document.createElement(tag);
     for (const [k, v] of Object.entries(props)) {
       if (k === 'class') e.className = v;
       else if (k === 'onclick') e.addEventListener('click', v);
       else if (k === 'html') e.innerHTML = v;
-      else if (v !== null && v !== false) e.setAttribute(k, v);
+      else if (v !== null && v !== false && v !== undefined) e.setAttribute(k, v);
     }
     for (const kid of kids.flat()) if (kid != null && kid !== false) e.append(kid.nodeType ? kid : document.createTextNode(kid));
     return e;
   }
 
-  vMenu() {
-    const h = this.h.bind(this);
-    const done = Object.keys(this.profile.completed).length;
-    return h('div', { class: 'menu' },
-      h('h1', {}, 'POCKET'),
-      h('h1', { style: 'margin-top:-14px' }, 'HACK'),
-      h('p', { class: 'tag' }, 'Terminal investigasi // semua jaringan fiktif'),
-      h('button', { class: 'big', onclick: () => this.go('contracts') },
-        h('b', {}, '▸ KONTRAK'),
-        h('small', {}, `${done}/${MISSIONS.length} selesai · ${this.profile.credits} kredit`)),
-      h('button', { class: 'big', onclick: () => this.go('archive') },
-        h('b', {}, '▸ MARKAS / ARSIP'),
-        h('small', {}, `${this.profile.archive.length} file tersimpan`)),
-      done > 0 && h('button', { class: 'linklike', onclick: () => confirm('Hapus semua progres?') && this.resetGame() }, 'reset progres')
-    );
+  // ---------- render root ----------
+  render() {
+    const el = this.h('div', { class: 'screen' });
+    if (this.intro) { el.append(this.vIntro()); this.root.replaceChildren(el); return; }
+    el.append(this.statusStrip());
+    const pane = this.h('div', { class: 'pane' + (this.curTab() === 'log' ? ' term' : '') });
+    pane.append(...this.currentPane());
+    el.append(pane);
+    if (this.showHint && this.ctx) el.append(this.h('div', { class: 'hint' }, '💡 ', hint(this.ctx)));
+    el.append(this.dock());
+    if (this.overlay) el.append(this.vOverlay());
+    this.root.replaceChildren(el);
   }
 
-  topbar(title, back) {
-    const h = this.h.bind(this);
-    return h('div', { class: 'topbar' },
-      back && h('button', { onclick: back }, '‹'),
-      h('span', { class: 'brand' }, title),
-      h('span', { class: 'spacer' }),
-      h('span', { class: 'chip' }, 'kredit ', h('b', {}, String(this.profile.credits))));
+  curTab() {
+    return this.scene === 'world' ? this.worldTab : this.scene === 'net' ? this.netTab : this.devTab;
   }
 
-  vContracts() {
+  // ---------- intro ----------
+  vIntro() {
     const h = this.h.bind(this);
-    const list = h('div', { class: 'list' });
-    for (const m of MISSIONS) {
-      const done = this.profile.completed[m.id];
-      const locked = m.id === 'm01' && !this.profile.completed['m00'] && !this.profile.tools.cipher;
-      list.append(h('button', { class: 'card', onclick: () => locked ? alert('Selesaikan kontrak sebelumnya untuk membuka tool yang dibutuhkan.') : this.startMission(m.id) },
-        h('div', { class: 'code' }, m.code),
-        h('h3', {}, m.title),
-        h('div', { class: 'client' }, m.client),
-        h('p', {}, m.brief),
-        h('div', { class: 'foot' },
-          done && h('span', { class: 'badge' }, '✓ selesai'),
-          locked && h('span', { class: 'badge', style: 'border-color:var(--amber);color:var(--amber)' }, '🔒 terkunci'),
-          h('span', { class: 'reward' }, `+${m.reward} kredit`))));
+    return h('div', { class: 'intro' },
+      h('div', { class: 'intro-logo' }, 'POCKET', h('span', {}, 'HACK')),
+      h('p', { class: 'intro-tag' }, `Kota ${CITY.name}. Sebuah terminal, sebuah rig, dan jaringan yang menunggu diselidiki.`),
+      h('p', { class: 'intro-note' }, 'Semua jaringan, perangkat, dan celah di game ini fiktif. Ini puzzle investigasi, bukan alat peretasan nyata.'),
+      h('button', { class: 'intro-go', onclick: () => { this.intro = false; this.persist(); this.render(); } }, '▸ MASUK KOTA'));
+  }
+
+  // ---------- status strip ----------
+  statusStrip() {
+    const h = this.h.bind(this);
+    if (this.scene === 'world') {
+      const rank = rankFor(this.profile.rep);
+      return h('div', { class: 'statusbar' },
+        h('span', { class: 'loc' }, '◉ ', CITY.name.toUpperCase()),
+        h('span', { class: 'spacer' }),
+        h('span', { class: 'cr' }, '◈ ', String(this.profile.credits)),
+        h('span', { class: 'rk' }, rank.name));
     }
-    return h('div', { style: 'display:flex;flex-direction:column;height:100%' },
-      this.topbar('KONTRAK', () => this.go('menu')), list);
+    const site = this.ctx.mission;
+    if (this.scene === 'net') {
+      const node = nodeFor(site.id);
+      return h('div', { class: 'statusbar' },
+        h('button', { class: 'back', title: 'Jack out', onclick: () => this.jackOut() }, '‹'),
+        h('span', { class: 'loc' }, site.code, ' ', site.title),
+        h('span', { class: 'spacer' }),
+        h('span', { class: 'df' }, DIFF_LABEL[node?.difficulty || 1]),
+        this.hintBtn());
+    }
+    const d = device(this.ctx.run, this.ctx.run.current);
+    return h('div', { class: 'statusbar' },
+      h('button', { class: 'back', onclick: () => this.runCommand('DISCONNECT', { type: 'rig' }) }, '‹'),
+      h('span', { class: 'loc' }, d.name),
+      h('span', { class: 'addr' }, d.addr),
+      h('span', { class: 'spacer' }),
+      h('span', { class: 'lv' }, LEVEL_LABEL[d.access]),
+      this.hintBtn());
   }
 
-  // ----- play -----
-  vPlay() {
+  hintBtn() {
+    return this.h('button', { class: 'hintbtn' + (this.showHint ? ' on' : ''), onclick: () => { this.showHint = !this.showHint; this.render(); } }, '💡');
+  }
+
+  // ---------- panes ----------
+  currentPane() {
+    if (this.scene === 'world') {
+      if (this.worldTab === 'map') return this.paneWorld();
+      if (this.worldTab === 'jobs') return this.paneJobs();
+      if (this.worldTab === 'market') return this.paneMarket();
+      return this.paneProfile();
+    }
+    if (this.scene === 'net') {
+      if (this.netTab === 'net') return this.paneNet();
+      if (this.netTab === 'rig') return this.paneRig();
+      if (this.netTab === 'obj') return this.paneObjectives();
+      return this.paneTerm();
+    }
+    if (this.devTab === 'files') return this.paneFiles();
+    if (this.devTab === 'sys') return this.paneSystem();
+    return this.paneTerm();
+  }
+
+  // ===== WORLD =====
+  paneWorld() {
     const h = this.h.bind(this);
-    const objs = objectives(this.ctx);
-    const unmet = objs.some((o) => o.main && !o.done);
-    const wrap = h('div', { style: 'display:flex;flex-direction:column;height:100%' });
-    wrap.append(this.topbar(this.ctx.mission.code, () => confirm('Keluar dari kontrak? Progres operasi hilang.') && this.go('contracts')));
-
-    const anyMain = objs.filter((o) => o.main).every((o) => o.done);
-    wrap.append(h('div', { class: 'tabs' },
-      ...[['net', 'JARINGAN'], ['dev', 'PERANGKAT'], ['term', 'TERMINAL'], ['rig', 'RIG'], ['obj', 'MISI']].map(([id, lbl]) =>
-        h('button', { class: this.tab === id ? 'on' : '', onclick: () => { this.tab = id; this.render(); } },
-          lbl, id === 'obj' && anyMain && h('span', { class: 'dot', style: 'background:var(--green)' })))));
-
-    const pane = h('div', { class: 'pane' + (this.tab === 'term' ? ' term' : '') });
-    if (this.tab === 'net') pane.append(...this.paneNet());
-    else if (this.tab === 'dev') pane.append(...this.paneDevice());
-    else if (this.tab === 'term') pane.append(this.paneTerm());
-    else if (this.tab === 'rig') pane.append(...this.paneRig());
-    else if (this.tab === 'obj') pane.append(...this.paneObjectives(objs, anyMain));
-    wrap.append(pane);
-
-    if (this.showHint) wrap.append(h('div', { class: 'hint' }, '💡 ', hint(this.ctx)));
-    wrap.append(this.cmdBar());
-    return wrap;
+    const map = h('div', { class: 'worldmap' });
+    for (const n of worldNodes(this.profile)) {
+      const sel = this.selSite === n.id;
+      const cls = 'site-pin ' + n.state + (sel ? ' sel' : '');
+      map.append(h('button', { class: cls, style: `left:${n.x}%;top:${n.y}%`,
+        onclick: () => { if (n.state === 'locked') { alert('Sinyal lemah. Naikkan reputasi atau beli intel untuk membuka lokasi ini.'); return; } this.selSite = n.id; this.render(); } },
+        h('span', { class: 'pin-dot' }, n.state === 'cleared' ? '✓' : n.state === 'locked' ? '?' : '◉'),
+        h('span', { class: 'pin-nm' }, n.state === 'locked' ? '???' : n.site.title)));
+    }
+    const out = [h('div', { class: 'section-h' }, 'Peta Kota — pilih target lalu JACK IN'), map];
+    const n = this.selSite ? nodeFor(this.selSite) : null;
+    if (n) {
+      const st = nodeState(this.profile, n.id);
+      out.push(h('div', { class: 'site-card' },
+        h('div', { class: 'code' }, n.site.code, ' · ', n.district, ' · ', DIFF_LABEL[n.difficulty]),
+        h('h3', {}, n.site.title),
+        h('p', {}, n.short),
+        h('div', { class: 'foot' },
+          st === 'cleared' && h('span', { class: 'badge' }, '✓ selesai'),
+          h('span', { class: 'reward' }, `+${n.site.reward} ◈ · +${n.repReward} rep`))));
+    } else {
+      out.push(h('div', { class: 'empty' }, 'Ketuk sebuah pin di peta untuk melihat targetnya.'));
+    }
+    return out;
   }
 
+  paneJobs() {
+    const h = this.h.bind(this);
+    const out = [h('div', { class: 'section-h' }, 'Papan Job')];
+    for (const j of availableJobs(this.profile)) {
+      out.push(h('button', { class: 'card', onclick: () => { this.selSite = j.siteId; this.worldTab = 'map'; this.render(); } },
+        h('div', { class: 'code' }, j.code, ' · ', j.district, ' · ', DIFF_LABEL[j.difficulty]),
+        h('h3', {}, j.title),
+        h('div', { class: 'client' }, j.client),
+        h('p', {}, j.brief),
+        h('div', { class: 'foot' },
+          j.done && h('span', { class: 'badge' }, '✓ selesai'),
+          h('span', { class: 'reward' }, `+${j.reward} ◈ · +${j.repReward} rep`))));
+    }
+    return out;
+  }
+
+  paneMarket() {
+    const h = this.h.bind(this);
+    const out = [h('div', { class: 'section-h' }, `Pasar Gelap · ◈ ${this.profile.credits}`)];
+    for (const item of MARKET) {
+      const have = owned(this.profile, item);
+      const c = canBuy(this.profile, item);
+      out.push(h('div', { class: 'market-row' + (have ? ' owned' : '') },
+        h('div', { class: 'main' }, h('b', {}, item.name), h('small', {}, item.desc)),
+        have
+          ? h('span', { class: 'tag-r', style: 'color:var(--green)' }, 'DIMILIKI')
+          : h('button', { class: 'buy' + (c.ok ? '' : ' off'), onclick: () => c.ok ? this.doBuy(item.id) : alert(c.reason) }, `◈ ${item.cost}`)));
+    }
+    return out;
+  }
+
+  paneProfile() {
+    const h = this.h.bind(this);
+    const rank = rankFor(this.profile.rep);
+    const nxt = nextRank(this.profile.rep);
+    const pct = Math.round(rankProgress(this.profile.rep) * 100);
+    const cleared = Object.keys(this.profile.cleared).length;
+    const out = [
+      h('div', { class: 'section-h' }, 'Profil Operator'),
+      h('div', { class: 'rankbox' },
+        h('div', { class: 'rank-top' }, h('b', {}, rank.name), h('span', {}, `${this.profile.rep} rep`)),
+        h('div', { class: 'rankbar' }, h('i', { style: `width:${pct}%` })),
+        h('small', {}, nxt ? `${nxt.min - this.profile.rep} rep lagi → ${nxt.name}` : 'Rank tertinggi tercapai.')),
+      h('div', { class: 'stat-row' },
+        h('div', { class: 'stat' }, h('b', {}, String(this.profile.credits)), h('small', {}, 'kredit')),
+        h('div', { class: 'stat' }, h('b', {}, `${cleared}/${WORLD_NODES.length}`), h('small', {}, 'target selesai')),
+        h('div', { class: 'stat' }, h('b', {}, `${ramUsed(this.profile)}/${this.profile.ram}`), h('small', {}, 'RAM'))),
+      h('div', { class: 'section-h' }, 'Arsip (file tersimpan)')
+    ];
+    if (!this.profile.archive.length) out.push(h('div', { class: 'empty' }, 'Belum ada file tersimpan.'));
+    for (const f of this.profile.archive) {
+      out.push(h('button', { class: 'obj', onclick: () => { this.overlay = { kind: 'read', sheet: { title: f.name, content: f.content } }; this.render(); } },
+        h('div', { class: 'ic' }, '📄'), h('div', { class: 'main' }, h('b', {}, f.name))));
+    }
+    out.push(h('button', { class: 'linklike', onclick: () => confirm('Hapus semua progres?') && this.resetGame() }, 'reset progres'));
+    return out;
+  }
+
+  // ===== NET =====
   paneNet() {
     const h = this.h.bind(this);
     const run = this.ctx.run;
@@ -212,77 +320,24 @@ export class App {
     map.append(svg);
     for (const d of devs) {
       const cur = run.current === d.id;
-      const node = h('button', { class: 'node' + (cur ? ' cur' : '') + (d.online ? '' : ' off'), style: `left:${d.x}%;top:${d.y}%`,
-        onclick: () => { this.sel = { type: 'device', id: d.id }; this.tab = cur ? 'dev' : 'net'; this.render(); } },
-        h('div', { class: 'nm' }, ICON[d.kind] || '🔌', ' ' + d.name),
+      map.append(h('button', { class: 'node' + (cur ? ' cur' : '') + (d.online ? '' : ' off'), style: `left:${d.x}%;top:${d.y}%`,
+        onclick: () => this.tapObject({ type: 'device', id: d.id }) },
+        h('div', { class: 'nm' }, (KIND_ICON[d.kind] || '🔌') + ' ' + d.name),
         h('div', { class: 'ad' }, d.addr),
         h('div', { class: 'st ' + (d.access !== 'none' ? 'a' : d.online && !d.statusText ? '' : 'o') },
-          d.access !== 'none' ? LEVEL_LABEL[d.access] : !d.online ? 'OFFLINE' : d.statusText || 'TERLIHAT'));
-      map.append(node);
+          d.access !== 'none' ? LEVEL_LABEL[d.access] : !d.online ? 'OFFLINE' : d.statusText || 'TERLIHAT')));
     }
     const out = [map];
-    if (!devs.length) out.push(h('div', { class: 'empty' }, 'Belum ada perangkat.\nPilih RIG di bawah lalu SCAN.'));
-    out.push(h('div', { class: 'section-h' }, 'Perangkat'));
+    if (!devs.length) out.push(h('div', { class: 'empty' }, 'Belum ada perangkat.\nTekan tombol SCAN di bawah.'));
+    out.push(h('div', { class: 'section-h' }, 'Perangkat ditemukan'));
     for (const d of devs) {
       const cur = run.current === d.id;
-      out.push(h('button', { class: 'obj', onclick: () => { this.sel = { type: 'device', id: d.id }; if (cur) this.tab = 'dev'; this.render(); } },
-        h('div', { class: 'ic' }, ICON[d.kind] || '🔌'),
+      out.push(h('button', { class: 'obj', onclick: () => this.tapObject({ type: 'device', id: d.id }) },
+        h('div', { class: 'ic' }, KIND_ICON[d.kind] || '🔌'),
         h('div', { class: 'main' }, h('b', {}, d.name), h('small', {}, `${d.kind} · ${d.addr}`)),
         h('div', { class: 'tag-r' }, cur ? 'TERHUBUNG' : d.access !== 'none' ? LEVEL_LABEL[d.access] : '')));
     }
     return out;
-  }
-
-  paneDevice() {
-    const h = this.h.bind(this);
-    const run = this.ctx.run;
-    if (!run.current) return [h('div', { class: 'empty' }, 'Belum terhubung ke perangkat.\nDi tab JARINGAN, pilih perangkat lalu CONNECT.')];
-    const d = device(run, run.current);
-    const out = [h('div', { class: 'section-h' }, `${d.name} · ${LEVEL_LABEL[d.access]}`)];
-
-    const files = visibleFiles(run, d.id);
-    out.push(h('div', { class: 'section-h' }, '📁 File'));
-    if (!files.length) out.push(h('div', { class: 'empty' }, 'Tidak ada file yang bisa diakses pada level ini.'));
-    for (const f of files) {
-      out.push(h('button', { class: 'obj' + (f.corrupt || f.deleted || f.encrypted ? ' locked' : ''),
-        onclick: () => { this.sel = { type: 'file', device: d.id, id: f.id }; this.render(); } },
-        h('div', { class: 'ic' }, '📄'),
-        h('div', { class: 'main' }, h('b', {}, f.name),
-          h('small', {}, f.deleted ? 'terhapus' : f.corrupt ? 'rusak' : f.encrypted ? 'terenkripsi' : run.read.includes(f.id) ? 'sudah dibaca' : 'belum dibaca')),
-        this.selMark({ type: 'file', device: d.id, id: f.id })));
-    }
-
-    if (d.procs?.length) {
-      out.push(h('div', { class: 'section-h' }, '⚙️ Proses & Layanan'));
-      for (const p of d.procs) {
-        out.push(h('button', { class: 'obj', onclick: () => { this.sel = { type: 'proc', device: d.id, id: p.id }; this.render(); } },
-          h('div', { class: 'ic' }, '⚙️'),
-          h('div', { class: 'main' }, h('b', {}, p.name), h('small', {}, p.desc)),
-          h('div', { class: 'tag-r', style: p.running ? 'color:var(--green)' : 'color:var(--muted)' }, p.running ? 'RUN' : 'STOP')));
-      }
-    }
-    if (d.controls?.length) {
-      out.push(h('div', { class: 'section-h' }, '🎛️ Kontrol Perangkat'));
-      for (const c of d.controls) {
-        out.push(h('button', { class: 'obj', onclick: () => { this.sel = { type: 'control', device: d.id, id: c.id }; this.render(); } },
-          h('div', { class: 'ic' }, '🎛️'),
-          h('div', { class: 'main' }, h('b', {}, c.label), h('small', {}, 'status: ' + c.state))));
-      }
-    }
-    return out;
-  }
-
-  selMark(t) {
-    if (JSON.stringify(this.sel) === JSON.stringify(t)) return this.h('div', { class: 'tag-r', style: 'color:var(--green)' }, '●');
-    return null;
-  }
-
-  paneTerm() {
-    const h = this.h.bind(this);
-    const log = h('div', { class: 'log' });
-    for (const e of this.ctx.run.log) log.append(h('div', { class: 'entry ' + e.t }, e.text));
-    setTimeout(() => { const p = this.root.querySelector('.pane'); if (p) p.scrollTop = p.scrollHeight; }, 0);
-    return log;
   }
 
   paneRig() {
@@ -294,21 +349,23 @@ export class App {
     const out = [h('div', { class: 'ram' },
       h('div', { class: 'top' }, h('b', {}, `${used}/${p.ram}`), h('span', { style: 'color:var(--muted)' }, 'RAM terpakai')),
       slots,
-      h('p', { style: 'color:var(--muted);font-size:12px;margin:10px 0 0' }, 'Aktifkan tool yang kamu perlukan. RAM membatasi jumlah tool aktif, bukan setiap tindakan.'))];
+      h('p', { style: 'color:var(--muted);font-size:12px;margin:10px 0 0' }, 'RAM membatasi jumlah tool aktif, bukan tiap tindakan. Beli tool & upgrade di Pasar.'))];
     for (const t of Object.values(TOOLS)) {
-      const owned = p.tools[t.id];
+      const ownd = p.tools[t.id];
       const active = toolActive(p, t.id);
-      out.push(h('div', { class: 'tool' + (owned ? '' : ' locked') },
+      out.push(h('div', { class: 'tool' + (ownd ? '' : ' locked') },
         h('div', { class: 'hd' }, h('b', {}, t.name), h('span', { class: 'cost' }, `${t.ram} RAM · ${t.cmd}`)),
-        h('p', {}, owned ? t.desc : '🔒 Belum dimiliki. Buka lewat kontrak.'),
-        owned && h('button', { class: active ? '' : 'off', onclick: () => { const r = toggleTool(p, t.id); if (!r.ok) alert(r.msg); this.persist(); this.render(); } },
+        h('p', {}, ownd ? t.desc : '🔒 Beli di Pasar.'),
+        ownd && h('button', { class: active ? '' : 'off', onclick: () => { const r = toggleTool(p, t.id); if (!r.ok) alert(r.msg); this.persist(); this.render(); } },
           active ? 'AKTIF — tutup' : 'aktifkan')));
     }
     return out;
   }
 
-  paneObjectives(objs, anyMain) {
+  paneObjectives() {
     const h = this.h.bind(this);
+    const objs = objectives(this.ctx);
+    const anyMain = objs.filter((o) => o.main).every((o) => o.done);
     const out = [h('div', { class: 'section-h' }, 'Tujuan'),
       h('div', { style: 'color:var(--muted);font-size:13px;margin-bottom:14px' }, this.ctx.mission.brief)];
     for (const o of objs) {
@@ -318,45 +375,152 @@ export class App {
           h('small', {}, o.bonus ? 'bonus' : o.main ? 'utama' : ''))));
     }
     if (anyMain) {
-      out.push(h('div', { class: 'section-h', style: 'margin-top:18px' }, 'Selesaikan kontrak'));
+      out.push(h('div', { class: 'section-h', style: 'margin-top:18px' }, 'Selesaikan & serahkan'));
+      const first = !this.profile.cleared[this.ctx.mission.id];
       for (const e of endings(this.ctx)) {
-        out.push(h('button', { class: 'card', disabled: !e.available, onclick: () => e.available && this.submitMission(e.id) },
+        const node = nodeFor(this.ctx.mission.id);
+        const cr = first ? e.reward : Math.round(e.reward / 4);
+        out.push(h('button', { class: 'card', disabled: !e.available, onclick: () => e.available && this.submitSite(e.id) },
           h('h3', {}, e.label),
-          h('div', { class: 'foot' }, h('span', { class: 'reward' }, `+${this.profile.completed[this.ctx.mission.id] ? Math.round(e.reward / 4) : e.reward} kredit`))));
+          h('div', { class: 'foot' }, h('span', { class: 'reward' }, `+${cr} ◈ · +${first ? (node?.repReward || 0) : Math.round((node?.repReward || 0) / 4)} rep`))));
       }
     }
     return out;
   }
 
-  cmdBar() {
+  // ===== DEVICE =====
+  deviceHeader() {
     const h = this.h.bind(this);
-    const bar = h('div', { class: 'cmdbar' });
-    bar.append(h('button', { class: 'fab', style: 'margin:0 0 10px;width:100%', onclick: () => { this.showHint = !this.showHint; this.render(); } },
-      this.showHint ? '✕ sembunyikan petunjuk' : '💡 petunjuk langkah berikutnya'));
-    const label = this.selLabel();
-    bar.append(h('div', { class: 'sel' }, 'terpilih: ', h('b', {}, label)));
-    const acts = getActions(this.ctx, this.sel);
-    const grid = h('div', { class: 'cmds' });
-    if (!acts.length) grid.append(h('div', { class: 'linklike' }, 'Pilih objek untuk melihat perintah.'));
-    for (const a of acts) {
-      grid.append(h('button', { class: 'cmdbtn', disabled: !a.enabled, title: a.reason,
-        onclick: () => a.enabled ? this.runCommand(a.cmd, this.sel) : alert(a.reason) }, a.cmd));
+    const d = device(this.ctx.run, this.ctx.run.current);
+    const acts = getActions(this.ctx, { type: 'device', id: d.id }).filter((a) => a.cmd !== 'CONNECT');
+    const extra = acts.filter((a) => !['INSPECT'].includes(a.cmd)).map((a) => a.cmd);
+    return h('button', { class: 'devhead', onclick: () => this.tapObject({ type: 'device', id: d.id }) },
+      h('div', { class: 'ic' }, KIND_ICON[d.kind] || '🔌'),
+      h('div', { class: 'main' },
+        h('b', {}, d.name),
+        h('small', {}, extra.length ? 'perintah: ' + extra.join(' · ') : 'INSPECT perangkat')),
+      h('div', { class: 'tag-r', style: 'color:var(--green)' }, LEVEL_LABEL[d.access]));
+  }
+
+  paneFiles() {
+    const h = this.h.bind(this);
+    const run = this.ctx.run;
+    const d = device(run, run.current);
+    const files = visibleFiles(run, d.id);
+    const out = [this.deviceHeader(), h('div', { class: 'section-h' }, `File · ${LEVEL_LABEL[d.access]}`)];
+    if (!files.length) out.push(h('div', { class: 'empty' }, 'Tidak ada file yang bisa diakses pada level ini.'));
+    for (const f of files) {
+      out.push(h('button', { class: 'obj' + (f.corrupt || f.deleted || f.encrypted ? ' locked' : ''),
+        onclick: () => this.tapObject({ type: 'file', device: d.id, id: f.id }) },
+        h('div', { class: 'ic' }, '📄'),
+        h('div', { class: 'main' }, h('b', {}, f.name),
+          h('small', {}, f.deleted ? 'terhapus' : f.corrupt ? 'rusak' : f.encrypted ? 'terenkripsi' : run.read.includes(f.id) ? 'sudah dibaca' : 'belum dibaca'))));
     }
-    bar.append(grid);
-    return bar;
+    if (run.local.length) {
+      out.push(h('div', { class: 'section-h' }, '💾 Salinan lokal'));
+      for (const f of run.local) {
+        out.push(h('button', { class: 'obj', onclick: () => this.tapObject({ type: 'file', local: true, id: f.id }) },
+          h('div', { class: 'ic' }, '💾'),
+          h('div', { class: 'main' }, h('b', {}, f.name), h('small', {}, f.encrypted ? 'terenkripsi' : 'siap dibaca'))));
+      }
+    }
+    return out;
+  }
+
+  paneSystem() {
+    const h = this.h.bind(this);
+    const d = device(this.ctx.run, this.ctx.run.current);
+    const out = [this.deviceHeader()];
+    out.push(h('div', { class: 'section-h' }, '⚙️ Proses & Layanan'));
+    if (!d.procs?.length) out.push(h('div', { class: 'empty' }, 'Tidak ada proses pada perangkat ini.'));
+    for (const p of d.procs || []) {
+      out.push(h('button', { class: 'obj', onclick: () => this.tapObject({ type: 'proc', device: d.id, id: p.id }) },
+        h('div', { class: 'ic' }, '⚙️'),
+        h('div', { class: 'main' }, h('b', {}, p.name), h('small', {}, p.desc)),
+        h('div', { class: 'tag-r', style: p.running ? 'color:var(--green)' : 'color:var(--muted)' }, p.running ? 'RUN' : 'STOP')));
+    }
+    if (d.controls?.length) {
+      out.push(h('div', { class: 'section-h' }, '🎛️ Kontrol Perangkat'));
+      for (const c of d.controls) {
+        out.push(h('button', { class: 'obj', onclick: () => this.tapObject({ type: 'control', device: d.id, id: c.id }) },
+          h('div', { class: 'ic' }, '🎛️'),
+          h('div', { class: 'main' }, h('b', {}, c.label), h('small', {}, 'status: ' + c.state))));
+      }
+    }
+    return out;
+  }
+
+  paneTerm() {
+    const h = this.h.bind(this);
+    const log = h('div', { class: 'log' });
+    for (const e of this.ctx.run.log) log.append(h('div', { class: 'entry ' + e.t }, e.text));
+    setTimeout(() => { const p = this.root.querySelector('.pane'); if (p) p.scrollTop = p.scrollHeight; }, 0);
+    return [log];
+  }
+
+  // ---------- dock ----------
+  primaryAction() {
+    if (!this.ctx) return null;
+    const acts = getActions(this.ctx, this.sel);
+    return acts.find((a) => a.enabled && a.cmd !== 'INSPECT') || acts.find((a) => a.cmd !== 'INSPECT') || acts[0] || null;
+  }
+
+  dock() {
+    const h = this.h.bind(this);
+    if (this.scene === 'world') {
+      const n = this.selSite ? nodeFor(this.selSite) : null;
+      const canJack = !!n;
+      return this.dockRow(
+        [['map', '🗺️', 'Peta'], ['jobs', '📡', 'Job']],
+        { label: 'JACK IN', sub: n ? n.site.code : 'pilih target', enabled: canJack, danger: false,
+          onclick: () => canJack ? this.jackIn(this.selSite) : null },
+        [['market', '🛒', 'Pasar'], ['profile', '👤', 'Profil']],
+        (id) => { this.worldTab = id; this.render(); }, this.worldTab);
+    }
+    if (this.scene === 'net') {
+      const pa = this.primaryAction();
+      return this.dockRow(
+        [['net', '🌐', 'Node'], ['rig', '🧰', 'Rig']],
+        { label: pa ? pa.cmd : '—', sub: this.selLabel(), enabled: !!pa && pa.enabled,
+          onclick: () => pa && (pa.enabled ? this.runCommand(pa.cmd, this.sel) : alert(pa.reason)) },
+        [['obj', '🎯', 'Misi'], ['log', '📟', 'Log']],
+        (id) => { this.netTab = id; this.render(); }, this.netTab);
+    }
+    const pa = this.primaryAction();
+    return this.dockRow(
+      [['files', '📁', 'File'], ['sys', '⚙️', 'Sistem']],
+      { label: pa ? pa.cmd : '—', sub: this.selLabel(), enabled: !!pa && pa.enabled,
+        onclick: () => pa && (pa.enabled ? this.runCommand(pa.cmd, this.sel) : alert(pa.reason)) },
+      [['log', '📟', 'Log'], ['_out', '⏏', 'Keluar']],
+      (id) => { if (id === '_out') this.runCommand('DISCONNECT', { type: 'rig' }); else { this.devTab = id; this.render(); } },
+      this.devTab);
+  }
+
+  dockRow(left, fab, right, onTab, active) {
+    const h = this.h.bind(this);
+    const btn = ([id, icon, label]) =>
+      h('button', { class: 'dock-btn' + (id === active ? ' on' : ''), onclick: () => onTab(id) },
+        h('span', { class: 'di' }, icon), h('span', { class: 'dl' }, label));
+    const row = h('div', { class: 'dock' });
+    for (const b of left) row.append(btn(b));
+    row.append(h('button', { class: 'dock-fab' + (fab.enabled ? '' : ' off') + (fab.danger ? ' danger' : ''), onclick: fab.onclick },
+      h('span', { class: 'fab-cmd' }, fab.label), h('span', { class: 'fab-sub' }, fab.sub || '')));
+    for (const b of right) row.append(btn(b));
+    return row;
   }
 
   selLabel() {
     const s = this.sel;
-    if (s.type === 'rig') return 'RIG lokal';
+    if (!this.ctx) return '';
+    if (s.type === 'rig') return 'rig lokal';
     if (s.type === 'device') return device(this.ctx.run, s.id).name;
-    if (s.type === 'file') { const f = (s.local ? this.ctx.run.local : device(this.ctx.run, s.device).files).find((x) => x.id === s.id); return f?.name || s.id; }
-    if (s.type === 'proc') return device(this.ctx.run, s.device).procs.find((x) => x.id === s.id)?.name;
-    if (s.type === 'control') return device(this.ctx.run, s.device).controls.find((x) => x.id === s.id)?.label;
-    return '—';
+    if (s.type === 'file') { const f = (s.local ? this.ctx.run.local : device(this.ctx.run, s.device).files).find((x) => x.id === s.id); return f?.name || ''; }
+    if (s.type === 'proc') return device(this.ctx.run, s.device).procs.find((x) => x.id === s.id)?.name || '';
+    if (s.type === 'control') return device(this.ctx.run, s.device).controls.find((x) => x.id === s.id)?.label || '';
+    return '';
   }
 
-  // ----- overlays -----
+  // ---------- overlays ----------
   vOverlay() {
     const h = this.h.bind(this);
     const o = this.overlay;
@@ -364,56 +528,39 @@ export class App {
     const sheet = h('div', { class: 'sheet', onclick: (e) => e.stopPropagation() }, h('div', { class: 'grab' }));
 
     if (o.kind === 'read') {
-      sheet.append(h('h2', {}, o.sheet.title), h('div', { class: 'file' }, o.sheet.content),
-        h('button', { class: 'act', onclick: close }, 'TUTUP'));
+      sheet.append(h('h2', {}, o.sheet.title), h('div', { class: 'file' }, o.sheet.content), h('button', { class: 'act', onclick: close }, 'TUTUP'));
+    } else if (o.kind === 'actions') {
+      sheet.append(h('h2', {}, this.selLabel() || 'Perintah'));
+      if (!o.acts.length) sheet.append(h('p', { class: 'reason' }, 'Tidak ada perintah untuk objek ini.'));
+      for (const a of o.acts) {
+        sheet.append(h('button', { class: 'cmd-row' + (a.enabled ? '' : ' off'),
+          onclick: () => { if (!a.enabled) return; this.overlay = null; this.runCommand(a.cmd, o.target); } },
+          h('b', {}, a.cmd), a.enabled ? h('span', {}, '▸') : h('small', { class: 'reason' }, a.reason)));
+      }
+      sheet.append(h('button', { class: 'act dim', onclick: close }, 'TUTUP'));
     } else if (o.kind === 'choose') {
       sheet.append(h('h2', {}, o.cmd));
       if (o.cmd === 'CONFIG') {
-        sheet.append(h('p', { class: 'reason', style: 'color:var(--muted)' }, 'Atur nilai lalu simpan. START layanan setelahnya.'));
+        sheet.append(h('p', { style: 'color:var(--muted);font-size:12px' }, 'Atur nilai lalu simpan. START layanan setelahnya.'));
         for (const field of o.choices) {
           o.config[field.key] = o.config[field.key] ?? field.value;
           sheet.append(h('div', { class: 'section-h' }, field.label));
-          for (const opt of field.options) {
-            const btn = h('button', { class: 'opt' + (o.config[field.key] === opt ? ' cur' : ''),
-              onclick: () => { o.config[field.key] = opt; this.render(); } }, opt);
-            sheet.append(btn);
-          }
+          for (const opt of field.options)
+            sheet.append(h('button', { class: 'opt' + (o.config[field.key] === opt ? ' cur' : ''), onclick: () => { o.config[field.key] = opt; this.render(); } }, opt));
         }
         sheet.append(h('button', { class: 'act', onclick: () => this.applyConfig() }, 'SIMPAN KONFIGURASI'));
       } else {
         if (!o.choices.length) sheet.append(h('p', { class: 'reason' }, 'Belum ada pilihan. Kumpulkan petunjuk dulu.'));
-        for (const c of o.choices) sheet.append(h('button', { class: 'opt' + (c.current ? ' cur' : ''),
-          onclick: () => this.applyChoice(c.value) }, c.label, c.current && h('small', {}, 'status sekarang')));
-        sheet.append(h('button', { class: 'act', onclick: close, style: 'border-color:var(--line);color:var(--muted)' }, 'BATAL'));
+        for (const c of o.choices) sheet.append(h('button', { class: 'opt' + (c.current ? ' cur' : ''), onclick: () => this.applyChoice(c.value) }, c.label, c.current && h('small', {}, 'status sekarang')));
+        sheet.append(h('button', { class: 'act dim', onclick: close }, 'BATAL'));
       }
     } else if (o.kind === 'result') {
-      sheet.append(h('h2', { style: 'color:var(--green)' }, 'KONTRAK SELESAI'),
+      sheet.append(h('h2', { style: 'color:var(--green)' }, 'TARGET SELESAI'),
         h('div', { class: 'file' }, o.res.text),
-        h('p', { style: 'color:var(--amber)' }, `+${o.res.reward} kredit`),
+        h('p', { style: 'color:var(--amber)' }, `+${o.res.reward} ◈   ·   +${o.res.rep} rep`),
         o.res.unlocked.length && h('p', { style: 'color:var(--cyan)' }, 'Tool terbuka: ' + o.res.unlocked.map((t) => TOOLS[t].name).join(', ')),
-        h('button', { class: 'act', onclick: () => this.go('contracts') }, 'KEMBALI KE KONTRAK'));
-    } else if (o.kind === 'archiveFile') {
-      sheet.append(h('h2', {}, o.file.name), h('div', { class: 'file' }, o.file.content), h('button', { class: 'act', onclick: close }, 'TUTUP'));
+        h('button', { class: 'act', onclick: () => this.jackOut() }, 'KEMBALI KE KOTA'));
     }
     return h('div', { class: 'overlay', onclick: close }, sheet);
   }
 }
-
-// Archive view is small; handle it by reusing contracts-style list.
-App.prototype.go = function go(view) {
-  if (view === 'archive') { this.view = 'archive'; this.overlay = null; this.renderArchive(); return; }
-  this.view = view; this.overlay = null; this.render();
-};
-App.prototype.renderArchive = function renderArchive() {
-  const h = this.h.bind(this);
-  const el = h('div', { class: 'screen' });
-  const list = h('div', { class: 'list' });
-  if (!this.profile.archive.length) list.append(h('div', { class: 'empty' }, 'Belum ada file tersimpan.\nFile penting yang kamu DOWNLOAD akan tersimpan di sini setelah kontrak selesai.'));
-  for (const f of this.profile.archive) {
-    list.append(h('button', { class: 'card', onclick: () => { this.overlay = { kind: 'archiveFile', file: f }; this.view = 'archive'; this.renderArchive(); } },
-      h('h3', {}, '📄 ' + f.name)));
-  }
-  el.append(this.topbar('MARKAS / ARSIP', () => this.go('menu')), list);
-  if (this.overlay) el.append(this.vOverlay());
-  this.root.replaceChildren(el);
-};

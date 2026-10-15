@@ -2,7 +2,7 @@
 const hasLocal = (run, id) => run.local.some((f) => f.id === id);
 
 export default {
-  id: 'm00',
+  id: 's00',
   code: 'K-00',
   title: 'Antrean Cetak',
   client: 'Bu Laras, pemilik Kafe Senja',

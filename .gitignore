@@ -10,3 +10,6 @@ android/
 ios/
 *.apk
 *.aab
+
+# local smoke scripts
+_*.mjs
