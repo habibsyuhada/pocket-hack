@@ -25,6 +25,11 @@ export function newProfile() {
     bought: [],
     archive: [],
     discovered: {},
+    day: 1,
+    focus: 100,                 // daily energy; see game/time.js
+    items: {},                  // inventory: itemId -> count
+    retainers: {},              // siteId -> { lastDone }
+    npc: {},                    // npcId -> { aff, talkedDay, giftDay, claimed }
     speed: 0,                   // loading-speed upgrade level (market)
     accepted: {},               // siteId -> true once the mission is taken at the mission board
     cleared: {},

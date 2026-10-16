@@ -408,3 +408,22 @@ button:active:not(:disabled):not(.node):not(.site-pin) { transform: scale(0.97);
 .node.m-done .nm .ic-svg { color: var(--muted); }
 .node.m-done.cur { opacity: 0.85; }
 .node.m-active.cur { border-color: var(--green); box-shadow: 0 0 0 3px var(--green-ghost), var(--glow-sm); }
+
+/* day / focus */
+.statusbar .day, .statusbar .fo { padding: 4px 9px; border: 1px solid var(--line); border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.statusbar .day { color: var(--muted); }
+.fo.segar { color: var(--green); }
+.fo.lelah { color: var(--amber); }
+.fo.kelelahan { color: var(--red); }
+.statusbar .fo.segar { border-color: var(--green-dim); }
+.statusbar .fo.lelah { border-color: rgba(240,194,74,0.4); }
+.statusbar .fo.kelelahan { border-color: rgba(255,122,94,0.5); }
+.event-chip { padding: 10px 12px; margin-bottom: 10px; border: 1px dashed var(--amber); border-radius: 10px; background: rgba(240,194,74,0.07); }
+.event-chip b { display: block; color: var(--amber); font-size: 13px; }
+.event-chip small { color: var(--muted); font-size: 12px; }
+.focus-box { padding: 12px; margin-bottom: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg-panel); }
+.focus-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.focus-top .fo { font-size: 12px; font-weight: 600; }
+.focus-box small { display: block; margin-top: 8px; color: var(--muted); font-size: 11px; }
+.node.safehouse .nm .ic-svg { color: var(--amber); }
+.node.safehouse { border-color: rgba(240,194,74,0.5); }

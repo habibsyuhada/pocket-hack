@@ -7,6 +7,8 @@ import { DEFAULT_CMDS } from '../engine/commands.js';
 import { CITY, WORLD_NODES, DIFF_LABEL, nodeFor, worldNodes, isAccepted } from '../game/world.js';
 import { MARKET, buy, canBuy, owned } from '../game/market.js';
 import { HINT_COST } from '../game/profile.js';
+import { focusCostFor, loadingMult, spendFocus, sleep, focusState, FOCUS_LABEL, seasonName } from '../game/time.js';
+import { perksFor } from '../game/perks.js';
 import { rankFor, nextRank, rankProgress } from '../game/progression.js';
 import { saveProfile, loadProfile, clearProfile, buzz } from '../platform/storage.js';
 import { iconSvg } from './icons.js';
@@ -127,12 +129,27 @@ export class App {
 
   // ---------- loading ----------
   // Every command runs behind a full-screen loading; Overclock upgrades shorten it.
-  withLoading(label, fn) {
+  // Spends Fokus (never blocks) and slows down when tired. `opts` can override
+  // the cost / duration (used by sleeping).
+  withLoading(label, fn, opts = {}) {
     if (this.busy) return;
-    const ms = loadMs(this.profile);
+    const mods = perksFor(this.profile);
+    const cost = opts.cost ?? focusCostFor(this.profile, label, mods);
+    const ms = opts.ms ?? Math.round(loadMs(this.profile) * loadingMult(this.profile, mods));
+    spendFocus(this.profile, cost);
     this.busy = { label, ms };
     this.render();
     setTimeout(() => { this.busy = null; fn(); }, ms);
+  }
+
+  goSleep() {
+    this.overlay = null;
+    this.withLoading('TIDUR', () => {
+      const info = sleep(this.profile, perksFor(this.profile).focusMax);
+      this.persist();
+      this.overlay = { kind: 'daystart', info };
+      this.render();
+    }, { cost: 0, ms: 1500 });
   }
 
   // Entering the file / service server runs LS / PS behind the loading screen.
@@ -305,12 +322,12 @@ export class App {
   statusStrip() {
     const h = this.h.bind(this);
     if (!this.ctx || this.view === 'map' || this.view === 'market' || this.view === 'profile') {
-      const rank = rankFor(this.profile.rep);
       return h('div', { class: 'statusbar' },
         h('span', { class: 'loc' }, '◉ ', CITY.name.toUpperCase()),
         h('span', { class: 'spacer' }),
-        h('span', { class: 'cr' }, '◆ ', String(this.profile.credits)),
-        h('span', { class: 'rk' }, rank.name));
+        h('span', { class: 'day' }, `H${this.profile.day}`),
+        this.focusPill(),
+        h('span', { class: 'cr' }, '◆ ', String(this.profile.credits)));
     }
     if (NODE_PAGES.includes(this.view)) {
       const d = device(this.ctx.run, this.cur);
@@ -328,8 +345,14 @@ export class App {
       h('span', { class: 'loc' }, site.code, ' ', site.title),
       this.cur && h('span', { class: 'lv' }, LEVEL_LABEL[device(this.ctx.run, this.cur).access]),
       h('span', { class: 'spacer' }),
+      this.focusPill(),
       h('span', { class: 'cr' }, '◆ ', String(this.profile.credits)),
       this.hintBtn());
+  }
+
+  focusPill() {
+    return this.h('span', { class: 'fo ' + focusState(this.profile.focus), title: 'Fokus: ' + FOCUS_LABEL[focusState(this.profile.focus)] },
+      '⚡', String(this.profile.focus));
   }
 
   hintBtn() {
@@ -399,6 +422,10 @@ export class App {
     const sites = worldNodes(this.profile);
     const cards = [];
     let center = null;
+    const SAFEHOUSE = { x: 750, y: 1000 };
+    cards.push(this.nodeCardPx({ cls: 'node-target safehouse', cx: SAFEHOUSE.x, cy: SAFEHOUSE.y, icon: 'rig', title: 'SAFEHOUSE',
+      sub: `Hari ${this.profile.day} · ${seasonName(this.profile.day)}`, st: 'ISTIRAHAT', stCls: 'a',
+      onclick: () => { this.overlay = { kind: 'safehouse' }; this.render(); } }));
     for (const n of sites) {
       const base = { x: (n.x / 100) * MAPW, y: (n.y / 100) * MAPH };
       const acc = isAccepted(this.profile, n.id), locked = n.state === 'locked', cleared = n.state === 'cleared';
@@ -712,6 +739,9 @@ export class App {
     const o = this.overlay;
     const close = () => { this.overlay = null; this.render(); };
     const sheet = h('div', { class: 'sheet', onclick: (e) => e.stopPropagation() }, h('div', { class: 'grab' }));
+    // skip empty slots (`cond && node`) instead of printing "null" / "0"
+    const put = sheet.append.bind(sheet);
+    sheet.append = (...kids) => put(...kids.filter((k) => k != null && k !== false && k !== 0));
 
     if (o.kind === 'read') {
       sheet.append(h('h2', {}, o.sheet.title), h('div', { class: 'file' }, o.sheet.content), h('button', { class: 'act', onclick: close }, 'TUTUP'));
@@ -724,6 +754,23 @@ export class App {
           h('b', {}, a.cmd), a.enabled ? h('span', {}, '▸') : h('small', { class: 'reason' }, a.reason)));
       }
       sheet.append(h('button', { class: 'act dim', onclick: close }, 'TUTUP'));
+    } else if (o.kind === 'safehouse') {
+      const ev = perksFor(this.profile).event;
+      sheet.append(h('h2', {}, 'Safehouse'),
+        h('p', { style: 'color:var(--muted);font-size:13px;margin:4px 0 10px' }, `Hari ${this.profile.day} · Musim ${seasonName(this.profile.day)}`),
+        ev && h('div', { class: 'event-chip' }, h('b', {}, ev.name), h('small', {}, ev.desc)),
+        h('div', { class: 'focus-box' },
+          h('div', { class: 'focus-top' }, h('b', {}, `Fokus ${this.profile.focus}`), h('span', { class: 'fo ' + focusState(this.profile.focus) }, FOCUS_LABEL[focusState(this.profile.focus)])),
+          h('div', { class: 'rankbar' }, h('i', { style: `width:${Math.min(100, this.profile.focus)}%` })),
+          h('small', {}, 'Makin lelah, aksi makin mahal dan loading makin lama. Tidur memulihkan Fokus.')),
+        h('button', { class: 'jackin', onclick: () => this.goSleep() }, '▸ TIDUR · hari berikutnya'),
+        h('button', { class: 'act dim', onclick: close }, 'TUTUP'));
+    } else if (o.kind === 'daystart') {
+      const i = o.info;
+      sheet.append(h('h2', {}, `Hari ${i.day}`),
+        h('p', { style: 'color:var(--muted);font-size:13px;margin:4px 0 10px' }, `Musim ${i.season} · Fokus pulih penuh`),
+        i.event && h('div', { class: 'event-chip' }, h('b', {}, i.event.name), h('small', {}, i.event.desc)),
+        h('button', { class: 'act', onclick: close }, 'MULAI HARI'));
     } else if (o.kind === 'confirm') {
       sheet.append(h('h2', {}, o.title), h('p', { style: 'color:var(--muted);font-size:13px;margin:6px 0 12px' }, o.text),
         h('button', { class: 'act danger', onclick: () => { this.overlay = null; o.onOk(); } }, o.okLabel),
