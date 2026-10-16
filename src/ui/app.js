@@ -3,7 +3,8 @@ import { newProfile, newRun, TOOLS, LEVEL_LABEL, atLeast, device, visibleFiles }
 import { getActions, getChoices, exec, objectives, hint, endings, finish, LOCAL_CAP } from '../engine/actions.js';
 import { CMD_META, GROUPS, groupCommands, commandTargets } from '../engine/commands.js';
 import { hasCmd } from '../game/profile.js';
-import { CITY, WORLD_NODES, DIFF_LABEL, nodeFor, worldNodes } from '../game/world.js';
+import { DEFAULT_CMDS } from '../engine/commands.js';
+import { CITY, WORLD_NODES, DIFF_LABEL, BOARD, nodeFor, worldNodes, isAccepted } from '../game/world.js';
 import { MARKET, buy, canBuy, owned } from '../game/market.js';
 import { rankFor, nextRank, rankProgress } from '../game/progression.js';
 import { saveProfile, loadProfile, clearProfile, buzz } from '../platform/storage.js';
@@ -12,6 +13,7 @@ import { iconSvg } from './icons.js';
 const TAB_ICON = { map: 'map', terminal: 'terminal', goals: 'target', market: 'market', profile: 'profile' };
 const MAPW = 1500, MAPH = 2000, CLUSTER = 420; // big open-world canvas (px) + per-site node cluster spread
 const MIN_SCALE = 0.25, MAX_SCALE = 1.8;
+const NODE_PAGES = ['files', 'system', 'control'];
 const TABS = [['map', 'Peta'], ['terminal', 'Terminal'], ['goals', 'Goals'], ['market', 'Pasar'], ['profile', 'Profil']];
 
 export class App {
@@ -33,10 +35,13 @@ export class App {
 
   async boot() {
     const saved = await loadProfile();
-    if (saved) this.profile = { ...newProfile(), ...saved };
+    if (saved) {
+      this.profile = { ...newProfile(), ...saved };
+      this.profile.cmds = [...new Set([...(this.profile.cmds || []), ...DEFAULT_CMDS])];
+    }
     this.intro = !saved;
     const last = this.profile.lastSite;
-    if (last && siteById(last)) { this.ctx = this.ctxFor(last); this.goalSite = last; }
+    if (last && siteById(last) && isAccepted(this.profile, last)) { this.ctx = this.ctxFor(last); this.goalSite = last; }
     this.render();
   }
 
@@ -61,6 +66,18 @@ export class App {
     return this.runs[siteId];
   }
 
+  acceptMission(siteId) {
+    this.profile.accepted[siteId] = true;
+    this.focus(siteId);
+    this._centerOn = siteId;
+    this.mapView = null;
+    this.overlay = null;
+    this.view = 'map';
+    this.persist();
+    buzz('heavy');
+    this.render();
+  }
+
   focus(siteId) {
     this.ctx = this.ctxFor(siteId);
     this.profile.discovered[siteId] = true;
@@ -76,7 +93,7 @@ export class App {
     buzz('light');
     if (cmd === 'CONNECT' && this.cur) { this.sel = { type: 'device', id: this.cur }; this.view = 'terminal'; }
     this.persist();
-    if (cmd === 'DISCONNECT' && (this.view === 'files' || this.view === 'system')) this.view = 'map';
+    if (cmd === 'DISCONNECT' && NODE_PAGES.includes(this.view)) this.view = 'map';
     this.overlay = sheet ? { kind: 'read', sheet } : null;
     this.render();
   }
@@ -124,6 +141,7 @@ export class App {
     if (k === 'disconnect') { if (!this.cur) return alert('Belum terhubung ke node.'); this.overlay = null; this.runCommand('DISCONNECT', { type: 'rig' }); return; }
     if (k === 'files') { if (!this.cur) return alert('CONNECT ke node dulu.'); this.overlay = null; this.view = 'files'; this.render(); return; }
     if (k === 'system') { if (!this.cur) return alert('CONNECT ke node dulu.'); this.overlay = null; this.view = 'system'; this.render(); return; }
+    if (k === 'controlpage') { if (!this.cur) return alert('CONNECT ke node dulu.'); this.overlay = null; this.view = 'control'; this.render(); return; }
     if (k === 'search') {
       if (!this.cur) return alert('CONNECT ke node dulu.');
       this.overlay = null; this.view = 'terminal'; this.runCommand('SEARCH', { type: 'device', id: this.cur }); return;
@@ -139,7 +157,8 @@ export class App {
   runFromCatalog(cmd, target) {
     const k = CMD_META[cmd]?.kind;
     if (k === 'file') this.view = 'files';
-    else if (k === 'proc' || k === 'control') this.view = 'system';
+    else if (k === 'proc') this.view = 'system';
+    else if (k === 'control') this.view = 'control';
     this.overlay = null;
     this.runCommand(cmd, target);
   }
@@ -212,7 +231,7 @@ export class App {
         h('span', { class: 'cr' }, '◆ ', String(this.profile.credits)),
         h('span', { class: 'rk' }, rank.name));
     }
-    if (this.view === 'files' || this.view === 'system') {
+    if (NODE_PAGES.includes(this.view)) {
       const d = device(this.ctx.run, this.cur);
       return h('div', { class: 'statusbar' },
         h('button', { class: 'back', title: 'Kembali ke terminal', onclick: () => { this.view = 'terminal'; this.render(); } }, this.ic('back')),
@@ -246,13 +265,14 @@ export class App {
     if (this.view === 'goals') return this.paneObjectives();
     if (this.view === 'files') return this.paneFiles();
     if (this.view === 'system') return this.paneSystem();
+    if (this.view === 'control') return this.paneControl();
     return this.paneMap();
   }
 
   emptyNeedJack() {
     const h = this.h.bind(this);
     return [h('div', { class: 'empty', style: 'margin-top:40px' },
-      'Belum ada node dipilih.\nBuka tab Peta lalu ketuk sebuah node.'),
+      'Belum ada node dipilih.\nTerima misi di PAPAN MISI, lalu ketuk node-nya di peta.'),
       h('button', { class: 'jackin', style: 'max-width:260px;margin:14px auto 0;display:block', onclick: () => { this.view = 'map'; this.render(); } }, '▸ KE PETA')];
   }
 
@@ -283,15 +303,16 @@ export class App {
 
     const sites = worldNodes(this.profile);
     const tags = [], cards = [];
-    let center = null;
+    const boardPos = { x: (BOARD.x / 100) * MAPW, y: (BOARD.y / 100) * MAPH };
+    let center = boardPos;
+    const waiting = sites.filter((n) => !isAccepted(this.profile, n.id) && n.state !== 'locked').length;
+    cards.push(this.nodeCardPx({ cls: 'node-target', cx: boardPos.x, cy: boardPos.y, icon: 'target', title: 'PAPAN MISI',
+      sub: waiting ? `${waiting} misi baru` : 'belum ada misi baru', st: 'TERIMA MISI', stCls: 'a',
+      onclick: () => { this.overlay = { kind: 'board' }; this.render(); } }));
     for (const n of sites) {
+      if (!isAccepted(this.profile, n.id)) continue;
       const base = { x: (n.x / 100) * MAPW, y: (n.y / 100) * MAPH };
-      if (!center && n.state !== 'locked' && n.state !== 'cleared') center = base;
-      if (n.state === 'locked') {
-        cards.push(this.nodeCardPx({ cls: 'off', cx: base.x, cy: base.y, icon: 'target', title: '???', sub: 'sinyal lemah', st: 'TERKUNCI',
-          onclick: () => alert('Sinyal lemah. Naikkan reputasi atau beli intel untuk membuka lokasi ini.') }));
-        continue;
-      }
+      if (this._centerOn === n.id) center = base;
       const ctx = this.ctxFor(n.id), run = ctx.run;
       const dpos = (d) => ({ x: base.x + ((d.x - 50) / 100) * CLUSTER, y: base.y + ((d.y - 50) / 100) * CLUSTER });
       const devs = Object.values(run.devices).filter((d) => d.discovered);
@@ -305,12 +326,12 @@ export class App {
           cx: p.x, cy: p.y, icon: d.kind, title: d.name, sub: d.addr,
           st: d.access !== 'none' ? LEVEL_LABEL[d.access] : !d.online ? 'OFFLINE' : d.statusText || 'TERLIHAT',
           stCls: d.access !== 'none' ? 'a' : d.online && !d.statusText ? '' : 'o',
-          onclick: () => { this.focus(n.id); if (cur) { this.view = 'files'; this.render(); } else this.tapObject({ type: 'device', id: d.id }); }
+          onclick: () => { this.focus(n.id); if (cur) { this.view = 'terminal'; this.render(); } else this.tapObject({ type: 'device', id: d.id }); }
         }));
       }
     }
     inner.append(...tags, ...cards);
-    this._mapCenter = center || { x: MAPW * 0.3, y: MAPH * 0.68 };
+    this._mapCenter = center;
 
     const vp = h('div', { class: 'worldmap pan' }, inner,
       h('div', { class: 'zoom-btns' },
@@ -341,6 +362,7 @@ export class App {
       const r = vp.getBoundingClientRect();
       const s = 0.8, c = this._mapCenter || { x: MAPW / 2, y: MAPH / 2 };
       this.mapView = { scale: s, x: r.width / 2 - c.x * s, y: r.height / 2 - c.y * s };
+      this._centerOn = null;
     }
     this.applyMapT(inner);
     this.bindPanZoom(vp, inner);
@@ -442,7 +464,8 @@ export class App {
 
   paneObjectives() {
     const h = this.h.bind(this);
-    const open = worldNodes(this.profile).filter((n) => n.state !== 'locked');
+    const open = worldNodes(this.profile).filter((n) => isAccepted(this.profile, n.id));
+    if (!open.length) return [this.h('div', { class: 'empty', style: 'margin-top:40px' }, 'Belum ada misi diterima.\nKetuk node PAPAN MISI di peta untuk mengambil misi.')];
     if (!this.goalSite || !open.some((n) => n.id === this.goalSite)) this.goalSite = open[0]?.id;
     const ctx = this.ctxFor(this.goalSite);
     const tabs = h('div', { class: 'mission-tabs' });
@@ -491,7 +514,11 @@ export class App {
     const run = this.ctx.run;
     const d = device(run, this.cur);
     const files = visibleFiles(run, d.id);
-    const out = [this.deviceHeader(), h('div', { class: 'section-h' }, `File · ${LEVEL_LABEL[d.access]}`)];
+    const out = [this.deviceHeader(), h('div', { class: 'section-h' }, `File Server · ${LEVEL_LABEL[d.access]}`),
+      h('button', { class: 'obj' + (hasCmd(this.profile, 'SEARCH') ? '' : ' locked'),
+        onclick: () => { if (!hasCmd(this.profile, 'SEARCH')) return alert('SEARCH terkunci. Beli di Pasar.'); this.view = 'terminal'; this.runCommand('SEARCH', { type: 'device', id: d.id }); } },
+        h('div', { class: 'ic' }, this.ic(hasCmd(this.profile, 'SEARCH') ? 'terminal' : 'lock')),
+        h('div', { class: 'main' }, h('b', {}, 'SEARCH'), h('small', {}, 'cari kata kunci di semua file node ini')))];
     if (!files.length) out.push(h('div', { class: 'empty' }, 'Tidak ada file yang bisa diakses pada level ini.'));
     for (const f of files) {
       out.push(h('button', { class: 'obj' + (f.corrupt || f.deleted || f.encrypted ? ' locked' : ''),
@@ -515,7 +542,7 @@ export class App {
   paneSystem() {
     const h = this.h.bind(this);
     const d = device(this.ctx.run, this.cur);
-    const out = [this.deviceHeader(), h('div', { class: 'section-h' }, 'Proses & Layanan')];
+    const out = [this.deviceHeader(), h('div', { class: 'section-h' }, 'Service Server · Proses & Layanan')];
     if (!d.procs?.length) out.push(h('div', { class: 'empty' }, 'Tidak ada proses pada perangkat ini.'));
     for (const p of d.procs || []) {
       out.push(h('button', { class: 'obj', onclick: () => this.tapObject({ type: 'proc', device: d.id, id: p.id }) },
@@ -523,13 +550,18 @@ export class App {
         h('div', { class: 'main' }, h('b', {}, p.name), h('small', {}, p.desc)),
         h('div', { class: 'tag-r', style: p.running ? 'color:var(--green)' : 'color:var(--muted)' }, p.running ? 'RUN' : 'STOP')));
     }
-    if (d.controls?.length) {
-      out.push(h('div', { class: 'section-h' }, 'Kontrol Perangkat'));
-      for (const c of d.controls) {
-        out.push(h('button', { class: 'obj', onclick: () => this.tapObject({ type: 'control', device: d.id, id: c.id }) },
-          h('div', { class: 'ic' }, this.ic('control')),
-          h('div', { class: 'main' }, h('b', {}, c.label), h('small', {}, 'status: ' + c.state))));
-      }
+    return out;
+  }
+
+  paneControl() {
+    const h = this.h.bind(this);
+    const d = device(this.ctx.run, this.cur);
+    const out = [this.deviceHeader(), h('div', { class: 'section-h' }, 'Kontrol Perangkat')];
+    if (!d.controls?.length) out.push(h('div', { class: 'empty' }, 'Perangkat ini tidak punya kontrol fisik.'));
+    for (const c of d.controls || []) {
+      out.push(h('button', { class: 'obj', onclick: () => this.tapObject({ type: 'control', device: d.id, id: c.id }) },
+        h('div', { class: 'ic' }, this.ic('control')),
+        h('div', { class: 'main' }, h('b', {}, c.label), h('small', {}, 'status: ' + c.state))));
     }
     return out;
   }
@@ -549,7 +581,7 @@ export class App {
   // ---------- dock ----------
   dock() {
     const h = this.h.bind(this);
-    const active = (this.view === 'files' || this.view === 'system') ? 'terminal' : this.view;
+    const active = NODE_PAGES.includes(this.view) ? 'terminal' : this.view;
     const row = h('div', { class: 'dock' });
     for (const [id, label] of TABS)
       row.append(h('button', { class: 'dock-btn' + (id === active ? ' on' : ''), onclick: () => { this.view = id; this.overlay = null; this.render(); } },
@@ -584,6 +616,23 @@ export class App {
         sheet.append(h('button', { class: 'cmd-row' + (a.enabled ? '' : ' off'),
           onclick: () => { if (!a.enabled) return; this.overlay = null; this.runCommand(a.cmd, o.target); } },
           h('b', {}, a.cmd), a.enabled ? h('span', {}, '▸') : h('small', { class: 'reason' }, a.reason)));
+      }
+      sheet.append(h('button', { class: 'act dim', onclick: close }, 'TUTUP'));
+    } else if (o.kind === 'board') {
+      sheet.append(h('h2', {}, 'Papan Misi'));
+      const list = worldNodes(this.profile);
+      for (const n of list) {
+        const acc = isAccepted(this.profile, n.id), locked = n.state === 'locked';
+        sheet.append(h('div', { class: 'job' + (locked ? ' off' : '') },
+          h('div', { class: 'code', style: 'color:var(--green);font-size:12px;font-family:var(--mono)' },
+            locked ? '???' : `${n.site.code} · ${n.district} · ${DIFF_LABEL[n.difficulty]}`),
+          h('b', {}, locked ? 'Sinyal lemah' : n.site.title),
+          h('p', { style: 'color:var(--muted);font-size:12px;margin:4px 0 8px' },
+            locked ? 'Naikkan reputasi atau beli intel untuk membuka misi ini.' : n.site.brief),
+          locked ? null : h('div', { style: 'display:flex;align-items:center;gap:10px' },
+            h('span', { style: 'color:var(--amber);font-weight:600' }, `+${n.site.reward} ◆ · +${n.repReward} rep`),
+            acc ? h('span', { class: 'badge', style: 'margin-left:auto' }, n.state === 'cleared' ? '✓ selesai' : '● diterima')
+              : h('button', { class: 'jackin', style: 'margin-left:auto;width:auto;padding:8px 16px', onclick: () => this.acceptMission(n.id) }, 'TERIMA'))));
       }
       sheet.append(h('button', { class: 'act dim', onclick: close }, 'TUTUP'));
     } else if (o.kind === 'catalog') {

@@ -52,3 +52,10 @@ export function availableJobs(profile) {
   }
   return jobs;
 }
+
+// A mission's nodes only appear on the map once it is accepted at the board.
+// Older saves (before the board existed) count progress as accepted.
+export const isAccepted = (profile, id) => !!(profile.accepted?.[id] || profile.cleared[id] || profile.runs?.[id]);
+
+// Mission board position on the open map (percent of the canvas).
+export const BOARD = { x: 45, y: 52 };

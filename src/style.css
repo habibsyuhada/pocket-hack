@@ -379,3 +379,5 @@ button:active:not(:disabled):not(.node):not(.site-pin) { transform: scale(0.97);
 .mission-tabs { display: flex; gap: 8px; margin-bottom: 12px; overflow-x: auto; }
 .mission-tab { padding: 8px 14px; border: 1px solid var(--line); border-radius: 10px; font-size: 12px; font-weight: 600; color: var(--muted); white-space: nowrap; }
 .mission-tab.on { border-color: var(--green); color: var(--green); box-shadow: var(--glow-sm); }
+.job { padding: 12px; margin-bottom: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg-panel); }
+.job.off { opacity: 0.55; border-style: dashed; }

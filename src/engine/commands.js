@@ -18,23 +18,27 @@ export const CMD_META = {
   EXPLOIT: { group: 'access', kind: 'device', desc: 'Manfaatkan celah layanan.' },
   ELEVATE: { group: 'access', kind: 'device', desc: 'Naikkan hak akses.' },
   DISCONNECT: { group: 'access', kind: 'disconnect', desc: 'Putus dari perangkat.' },
-  // File
-  LS: { group: 'file', kind: 'files', desc: 'Lihat daftar file.' },
-  READ: { group: 'file', kind: 'file', desc: 'Baca isi file.' },
-  DOWNLOAD: { group: 'file', kind: 'file', desc: 'Salin file ke rig.' },
-  RECOVER: { group: 'file', kind: 'file', desc: 'Pulihkan file rusak/terhapus.' },
-  DECRYPT: { group: 'file', kind: 'file', desc: 'Buka file terenkripsi.' },
-  COMPARE: { group: 'file', kind: 'file', desc: 'Bandingkan dua file.' },
-  SEARCH: { group: 'file', kind: 'search', desc: 'Cari kata kunci di file node.' },
-  UPLOAD: { group: 'file', kind: 'soon', desc: 'Kirim file ke sistem.' },
-  EDIT: { group: 'file', kind: 'soon', desc: 'Ubah bagian file interaktif.' },
-  // Sistem
-  PS: { group: 'system', kind: 'system', desc: 'Lihat proses & layanan.' },
-  STOP: { group: 'system', kind: 'proc', desc: 'Hentikan proses.' },
-  START: { group: 'system', kind: 'proc', desc: 'Jalankan layanan.' },
-  CONFIG: { group: 'system', kind: 'proc', desc: 'Atur konfigurasi layanan.' },
-  RESTORE: { group: 'system', kind: 'proc', desc: 'Kembalikan konfigurasi.' },
-  CONTROL: { group: 'system', kind: 'control', desc: 'Operasikan perangkat fisik.' },
+  // Server: one entry command per node page; the old file/service commands
+  // (LS, READ, DOWNLOAD, ..., PS, STOP, START, ...) are features inside those pages.
+  FILES: { group: 'server', kind: 'files', desc: 'Buka file server node.' },
+  SERVICES: { group: 'server', kind: 'system', desc: 'Buka service server node.' },
+  // Fitur halaman file
+  LS: { group: 'feature', kind: 'files', desc: 'Lihat daftar file.' },
+  READ: { group: 'feature', kind: 'file', desc: 'Baca isi file.' },
+  DOWNLOAD: { group: 'feature', kind: 'file', desc: 'Salin file ke rig.' },
+  RECOVER: { group: 'feature', kind: 'file', desc: 'Pulihkan file rusak/terhapus.' },
+  DECRYPT: { group: 'feature', kind: 'file', desc: 'Buka file terenkripsi.' },
+  COMPARE: { group: 'feature', kind: 'file', desc: 'Bandingkan dua file.' },
+  SEARCH: { group: 'feature', kind: 'search', desc: 'Cari kata kunci di file node.' },
+  UPLOAD: { group: 'feature', kind: 'soon', desc: 'Kirim file ke sistem.' },
+  EDIT: { group: 'feature', kind: 'soon', desc: 'Ubah bagian file interaktif.' },
+  // Fitur halaman service
+  PS: { group: 'feature', kind: 'system', desc: 'Lihat proses & layanan.' },
+  STOP: { group: 'feature', kind: 'proc', desc: 'Hentikan proses.' },
+  START: { group: 'feature', kind: 'proc', desc: 'Jalankan layanan.' },
+  CONFIG: { group: 'feature', kind: 'proc', desc: 'Atur konfigurasi layanan.' },
+  RESTORE: { group: 'feature', kind: 'proc', desc: 'Kembalikan konfigurasi.' },
+  CONTROL: { group: 'server', kind: 'controlpage', desc: 'Buka halaman kontrol perangkat.' },
   // Automation
   TOOLS: { group: 'auto', kind: 'soon', desc: 'Koleksi program milikmu.' },
   RUN: { group: 'auto', kind: 'soon', desc: 'Jalankan tool pada objek.' },
@@ -45,15 +49,14 @@ export const CMD_META = {
 export const GROUPS = [
   { id: 'explore', name: 'Eksplorasi' },
   { id: 'access', name: 'Akses' },
-  { id: 'file', name: 'File' },
-  { id: 'system', name: 'Sistem' },
+  { id: 'server', name: 'Server' },
   { id: 'auto', name: 'Automation' }
 ];
 
 // Everything the 4 sites need, plus free navigation helpers — never locked.
 export const DEFAULT_CMDS = [
   'SCAN', 'INSPECT', 'MAP', 'CONNECT', 'LOGIN', 'CRACK', 'EXPLOIT', 'ELEVATE', 'DISCONNECT',
-  'LS', 'READ', 'DOWNLOAD', 'RECOVER', 'DECRYPT', 'COMPARE',
+  'FILES', 'SERVICES', 'LS', 'READ', 'DOWNLOAD', 'RECOVER', 'DECRYPT', 'COMPARE',
   'PS', 'STOP', 'START', 'CONFIG', 'RESTORE', 'CONTROL'
 ];
 

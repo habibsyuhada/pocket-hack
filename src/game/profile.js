@@ -9,7 +9,7 @@ export const TOOLS = {
 // player is never blocked. Kept here (not imported) to avoid a cycle.
 const DEFAULT_CMDS = [
   'SCAN', 'INSPECT', 'MAP', 'CONNECT', 'LOGIN', 'CRACK', 'EXPLOIT', 'ELEVATE', 'DISCONNECT',
-  'LS', 'READ', 'DOWNLOAD', 'RECOVER', 'DECRYPT', 'COMPARE',
+  'FILES', 'SERVICES', 'LS', 'READ', 'DOWNLOAD', 'RECOVER', 'DECRYPT', 'COMPARE',
   'PS', 'STOP', 'START', 'CONFIG', 'RESTORE', 'CONTROL'
 ];
 
@@ -24,7 +24,8 @@ export function newProfile() {
     active: ['keyloom'],
     bought: [],
     archive: [],
-    discovered: { s00: true },  // first site visible from the start
+    discovered: {},
+    accepted: {},               // siteId -> true once the mission is taken at the mission board
     cleared: {},
     intel: {},                  // siteId -> true (bought scouting intel)
     cmds: [...DEFAULT_CMDS],     // unlocked commands

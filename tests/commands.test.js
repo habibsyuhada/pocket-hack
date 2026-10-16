@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { newProfile, hasCmd } from '../src/game/profile.js';
 import { newRun } from '../src/engine/core.js';
 import { exec } from '../src/engine/actions.js';
-import { CMD_META, DEFAULT_CMDS, commandTargets, groupCommands } from '../src/engine/commands.js';
+import { CMD_META, DEFAULT_CMDS, GROUPS, commandTargets, groupCommands } from '../src/engine/commands.js';
 import { MARKET, buy } from '../src/game/market.js';
 import { SITES } from '../src/sites/index.js';
 
@@ -22,13 +22,18 @@ describe('command catalog', () => {
   });
 
   it('every command has metadata and belongs to a listed group', () => {
-    const groups = new Set(['explore', 'access', 'file', 'system', 'auto']);
+    const groups = new Set(['explore', 'access', 'server', 'feature', 'auto']);
     for (const [cmd, meta] of Object.entries(CMD_META)) {
       expect(groups.has(meta.group)).toBe(true);
       expect(typeof meta.desc).toBe('string');
     }
     // every group lists at least one command
     for (const g of groups) expect(groupCommands(g).length).toBeGreaterThan(0);
+  });
+
+  it('catalog has one Server group: FILES, SERVICES, CONTROL — no file/service commands', () => {
+    expect(groupCommands('server').sort()).toEqual(['CONTROL', 'FILES', 'SERVICES']);
+    expect(GROUPS.map((g) => g.id)).toEqual(['explore', 'access', 'server', 'auto']);
   });
 
   it('commandTargets lists reachable devices for CONNECT', () => {
