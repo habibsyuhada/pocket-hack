@@ -1,6 +1,6 @@
 import { SITES, siteById } from '../sites/index.js';
 import { newProfile, newRun, TOOLS, LEVEL_LABEL, atLeast, device, visibleFiles } from '../engine/core.js';
-import { getActions, getChoices, exec, objectives, hint, endings, finish } from '../engine/actions.js';
+import { getActions, getChoices, exec, objectives, hint, endings, finish, LOCAL_CAP } from '../engine/actions.js';
 import { CITY, WORLD_NODES, DIFF_LABEL, nodeFor, worldNodes, nodeState, availableJobs } from '../game/world.js';
 import { MARKET, buy, canBuy, owned } from '../game/market.js';
 import { rankFor, nextRank, rankProgress } from '../game/progression.js';
@@ -15,7 +15,7 @@ export class App {
     this.ctx = null;                 // null = world scene
     this.worldTab = 'map';
     this.netTab = 'net';
-    this.devTab = 'files';
+    this.devTab = 'term';
     this.sel = { type: 'rig' };
     this.selSite = null;             // highlighted site on world map
     this.showHint = false;
@@ -67,7 +67,7 @@ export class App {
     const { sheet } = exec(this.ctx, cmd, target);
     buzz('light');
     // CONNECT/DISCONNECT change scene → set a sensible default tab
-    if (!prevInside && this.ctx.run.current) { this.devTab = 'files'; this.sel = { type: 'device', id: this.ctx.run.current }; }
+    if (!prevInside && this.ctx.run.current) { this.devTab = 'term'; this.sel = { type: 'device', id: this.ctx.run.current }; }
     if (prevInside && !this.ctx.run.current) { this.netTab = 'net'; this.sel = { type: 'rig' }; }
     this.overlay = sheet ? { kind: 'read', sheet } : null;
     this.render();
@@ -137,7 +137,7 @@ export class App {
     const el = this.h('div', { class: 'screen' });
     if (this.intro) { el.append(this.vIntro()); this.root.replaceChildren(el); return; }
     el.append(this.statusStrip());
-    const pane = this.h('div', { class: 'pane' + (this.curTab() === 'log' ? ' term' : '') });
+    const pane = this.h('div', { class: 'pane' + (this.curTab() === 'term' ? ' term' : '') });
     pane.append(...this.currentPane());
     el.append(pane);
     if (this.showHint && this.ctx) el.append(this.h('div', { class: 'hint' }, '💡 ', hint(this.ctx)));
@@ -205,12 +205,12 @@ export class App {
     }
     if (this.scene === 'net') {
       if (this.netTab === 'obj') return this.paneObjectives();
-      if (this.netTab === 'log') return this.paneTerm();
+      if (this.netTab === 'term') return this.paneTerminal();
       return this.paneNet();
     }
     if (this.devTab === 'files') return this.paneFiles();
     if (this.devTab === 'sys') return this.paneSystem();
-    return this.paneTerm();
+    return this.paneTerminal();
   }
 
   // ===== WORLD =====
@@ -403,15 +403,16 @@ export class App {
         onclick: () => this.tapObject({ type: 'file', device: d.id, id: f.id }) },
         h('div', { class: 'ic' }, '📄'),
         h('div', { class: 'main' }, h('b', {}, f.name),
-          h('small', {}, f.deleted ? 'terhapus' : f.corrupt ? 'rusak' : f.encrypted ? 'terenkripsi' : run.read.includes(f.id) ? 'sudah dibaca' : 'belum dibaca'))));
+          h('small', {}, f.deleted ? 'terhapus' : f.corrupt ? 'rusak' : f.encrypted ? 'terenkripsi' : run.read.includes(f.id) ? 'sudah dibaca' : 'belum dibaca')),
+        h('div', { class: 'tag-r', style: f.noDownload ? 'color:var(--faint)' : 'color:var(--green-dim)' }, f.noDownload ? 'sistem' : '⬇')));
     }
-    if (run.local.length) {
-      out.push(h('div', { class: 'section-h' }, '💾 Salinan lokal'));
-      for (const f of run.local) {
-        out.push(h('button', { class: 'obj', onclick: () => this.tapObject({ type: 'file', local: true, id: f.id }) },
-          h('div', { class: 'ic' }, '💾'),
-          h('div', { class: 'main' }, h('b', {}, f.name), h('small', {}, f.encrypted ? 'terenkripsi' : 'siap dibaca'))));
-      }
+    out.push(h('div', { class: 'section-h' }, `💾 Salinan lokal · ${run.local.length}/${LOCAL_CAP}`));
+    if (!run.local.length) out.push(h('div', { class: 'empty' }, 'Belum ada file yang diunduh.\nPenyimpanan rig terbatas — pilih yang penting.'));
+    for (const f of run.local) {
+      out.push(h('button', { class: 'obj', onclick: () => this.tapObject({ type: 'file', local: true, id: f.id }) },
+        h('div', { class: 'ic' }, '💾'),
+        h('div', { class: 'main' }, h('b', {}, f.name), h('small', {}, f.encrypted ? 'terenkripsi' : 'siap dibaca')),
+        h('div', { class: 'tag-r' }, 'ketuk: hapus/baca')));
     }
     return out;
   }
@@ -439,33 +440,52 @@ export class App {
     return out;
   }
 
-  paneTerm() {
+  // Terminal tab: live log + tappable command chips (Null Byte style).
+  paneTerminal() {
     const h = this.h.bind(this);
     const log = h('div', { class: 'log' });
     for (const e of this.ctx.run.log) log.append(h('div', { class: 'entry ' + e.t }, e.text));
-    setTimeout(() => { const p = this.root.querySelector('.pane'); if (p) p.scrollTop = p.scrollHeight; }, 0);
-    return [log];
+    setTimeout(() => { if (log.isConnected) log.scrollTop = log.scrollHeight; }, 0);
+
+    // Command chips for the current context: the connected device's own
+    // commands when inside a node, or the rig's SCAN when still on the net.
+    const target = this.ctx.run.current ? { type: 'device', id: this.ctx.run.current } : { type: 'rig' };
+    const acts = getActions(this.ctx, target);
+    const chips = h('div', { class: 'termchips' });
+    for (const a of acts) {
+      chips.append(h('button', { class: 'termchip' + (a.enabled ? '' : ' off'), title: a.reason,
+        onclick: () => a.enabled ? this.runCommand(a.cmd, target) : alert(a.reason) }, a.cmd));
+    }
+    const hintRow = h('div', { class: 'term-hint' },
+      this.ctx.run.current ? 'Perintah di atas untuk node ini · buka tab File / Sistem untuk aksi per-objek'
+        : 'Pilih perangkat di tab Node untuk CONNECT');
+    return [log, chips, hintRow];
   }
 
   // ---------- dock (flat tab bar) ----------
   dock() {
     const h = this.h.bind(this);
+    // _exit* entries are actions, not tabs.
     const tabs = this.scene === 'world'
       ? [['map', '🗺️', 'Peta'], ['jobs', '📡', 'Job'], ['market', '🛒', 'Pasar'], ['profile', '👤', 'Profil']]
       : this.scene === 'net'
-        ? [['net', '🌐', 'Node'], ['obj', '🎯', 'Misi'], ['log', '📟', 'Log']]
-        : [['files', '📁', 'File'], ['sys', '⚙️', 'Sistem'], ['log', '📟', 'Log']];
+        ? [['net', '🌐', 'Node'], ['term', '📟', 'Terminal'], ['obj', '🎯', 'Misi'], ['_exitMission', '⏏', 'Keluar']]
+        : [['term', '📟', 'Terminal'], ['files', '📁', 'File'], ['sys', '⚙️', 'Sistem'], ['_exitNode', '⏏', 'Keluar']];
     const active = this.curTab();
     const onTab = (id) => {
+      if (id === '_exitNode') { this.runCommand('DISCONNECT', { type: 'rig' }); return; }
+      if (id === '_exitMission') { this.jackOut(); return; }
       if (this.scene === 'world') this.worldTab = id;
       else if (this.scene === 'net') this.netTab = id;
       else this.devTab = id;
       this.render();
     };
     const row = h('div', { class: 'dock' });
-    for (const [id, icon, label] of tabs)
-      row.append(h('button', { class: 'dock-btn' + (id === active ? ' on' : ''), onclick: () => onTab(id) },
+    for (const [id, icon, label] of tabs) {
+      const exit = id.startsWith('_exit');
+      row.append(h('button', { class: 'dock-btn' + (id === active ? ' on' : '') + (exit ? ' exit' : ''), onclick: () => onTab(id) },
         h('span', { class: 'di' }, icon), h('span', { class: 'dl' }, label)));
+    }
     return row;
   }
 

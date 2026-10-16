@@ -9,6 +9,10 @@ import {
 
 const A = (cmd, enabled, reason = '', choose = false) => ({ cmd, enabled, reason, choose });
 
+// How many files the rig can hold locally at once — forces the player to
+// choose what to exfiltrate instead of grabbing everything.
+export const LOCAL_CAP = 6;
+
 function needTool(profile, id) {
   return profile.tools[id] ? '' : `Butuh tool ${TOOLS[id].name}. Beli di Pasar.`;
 }
@@ -59,6 +63,7 @@ export function getActions(ctx, target) {
       out.push(A('READ', !f.encrypted, 'File terenkripsi.'));
       if (f.encrypted) out.push(A('DECRYPT', !needTool(profile, 'cipher'), needTool(profile, 'cipher'), true));
       if (f.compare && !f.encrypted) out.push(A('COMPARE', true, '', true));
+      out.push(A('DELETE', true));
       return out;
     }
     const d = device(run, target.device);
@@ -69,11 +74,14 @@ export function getActions(ctx, target) {
     else if (lock) readWhy = `Dikunci proses ${lock.name}.`;
     else if (f.encrypted) readWhy = 'Terenkripsi. DOWNLOAD lalu DECRYPT di perangkatmu.';
     out.push(A('READ', !readWhy, readWhy));
-    let dlWhy = '';
-    if (f.deleted || f.corrupt) dlWhy = 'Pulihkan dulu.';
-    else if (lock) dlWhy = `Dikunci proses ${lock.name}.`;
-    else if (run.local.some((l) => l.id === f.id)) dlWhy = 'Sudah ada salinan lokal.';
-    out.push(A('DOWNLOAD', !dlWhy, dlWhy));
+    if (!f.noDownload) {
+      let dlWhy = '';
+      if (f.deleted || f.corrupt) dlWhy = 'Pulihkan dulu.';
+      else if (lock) dlWhy = `Dikunci proses ${lock.name}.`;
+      else if (run.local.some((l) => l.id === f.id)) dlWhy = 'Sudah ada salinan lokal.';
+      else if (run.local.length >= LOCAL_CAP) dlWhy = `Penyimpanan lokal penuh (${LOCAL_CAP}/${LOCAL_CAP}). Hapus salinan dulu.`;
+      out.push(A('DOWNLOAD', !dlWhy, dlWhy));
+    }
     if (f.deleted || f.corrupt) out.push(A('RECOVER', !needTool(profile, 'mender'), needTool(profile, 'mender')));
     if (f.compare && !readWhy) out.push(A('COMPARE', true, '', true));
     return out;
@@ -234,9 +242,15 @@ export function exec(ctx, cmd, target, arg) {
     }
     case 'DOWNLOAD': {
       const f = findFile(run, target);
+      if (run.local.length >= LOCAL_CAP) { out.push({ t: 'warn', text: `Penyimpanan lokal penuh (${LOCAL_CAP}/${LOCAL_CAP}). Hapus salinan dulu.` }); break; }
       run.local.push({ ...structuredClone(f), from: d.name });
-      out.push({ t: 'ok', text: `${f.name} disalin ke perangkatmu.` });
+      out.push({ t: 'ok', text: `${f.name} disalin ke perangkatmu (${run.local.length}/${LOCAL_CAP}).` });
       applyEffects(run, mission, f.onDownload, out);
+      break;
+    }
+    case 'DELETE': {
+      run.local = run.local.filter((l) => l.id !== target.id);
+      out.push({ t: 'out', text: `Salinan lokal dihapus (${run.local.length}/${LOCAL_CAP}).` });
       break;
     }
     case 'RECOVER': {

@@ -163,3 +163,31 @@ describe('s03 vault decrypt chooser (regression)', () => {
     expect(ctx.run.local.find((f) => f.id === 'ledger').encrypted).toBeFalsy();
   });
 });
+
+describe('download capacity', () => {
+  it('blocks DOWNLOAD when local storage is full, DELETE frees a slot', async () => {
+    const { LOCAL_CAP } = await import('../src/engine/actions.js');
+    const ctx = ctxFor(m00);
+    exec(ctx, 'SCAN', { type: 'rig' });
+    exec(ctx, 'CONNECT', { type: 'device', id: 'router' });
+    // fill local storage to the cap with dummies
+    for (let i = 0; i < LOCAL_CAP; i++) ctx.run.local.push({ id: 'dummy' + i, name: 'd' + i });
+    const dl = action(ctx, 'DOWNLOAD', { type: 'file', device: 'router', id: 'wifi_info' });
+    expect(dl.enabled).toBe(false);
+    expect(dl.reason).toMatch(/penuh/i);
+    // delete one local copy -> download enabled again
+    exec(ctx, 'DELETE', { type: 'file', local: true, id: 'dummy0' });
+    expect(ctx.run.local.length).toBe(LOCAL_CAP - 1);
+    const dl2 = action(ctx, 'DOWNLOAD', { type: 'file', device: 'router', id: 'wifi_info' });
+    expect(dl2.enabled).toBe(true);
+  });
+
+  it('system files are not downloadable', () => {
+    // undressed site has no flavor; a noDownload file offers no DOWNLOAD action
+    const ctx = ctxFor(m00);
+    const d = ctx.run.devices.router;
+    d.files.push({ id: 'sysx', name: 'motd', minAccess: 'guest', noDownload: true, content: 'x' });
+    exec(ctx, 'CONNECT', { type: 'device', id: 'router' });
+    expect(action(ctx, 'DOWNLOAD', { type: 'file', device: 'router', id: 'sysx' })).toBeUndefined();
+  });
+});
