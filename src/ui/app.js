@@ -379,10 +379,11 @@ export class App {
     const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
     const apply = () => this.applyMapT(inner);
     vp.addEventListener('pointerdown', (e) => {
+      // reset first, so a stale drag flag never swallows the next tap on a node
+      this._dragged = false;
       // never interfere with a press that starts on a node/button
       if (e.target.closest('.node, .zoom-btn')) return;
       pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      this._dragged = false;
       if (pts.size === 2) {
         const a = [...pts.values()]; const r = vp.getBoundingClientRect();
         st = { pinch: true, dist: dist(a[0], a[1]), scale: this.mapView.scale, mx: (a[0].x + a[1].x) / 2 - r.left, my: (a[0].y + a[1].y) / 2 - r.top, vx: this.mapView.x, vy: this.mapView.y };
