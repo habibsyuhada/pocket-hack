@@ -35,6 +35,8 @@ export class App {
     const saved = await loadProfile();
     if (saved) this.profile = { ...newProfile(), ...saved };
     this.intro = !saved;
+    const last = this.profile.lastSite;
+    if (last && siteById(last)) { this.ctx = this.ctxFor(last); this.goalSite = last; }
     this.render();
   }
 
@@ -47,7 +49,12 @@ export class App {
   ctxFor(siteId) {
     if (!this.runs[siteId]) {
       const site = siteById(siteId);
-      const ctx = { mission: site, run: newRun(site), profile: this.profile };
+      // restore the saved run if it still matches this site's layout
+      const saved = this.profile.runs?.[siteId];
+      const ok = saved && saved.missionId === site.id && Object.keys(site.world.devices).every((id) => saved.devices?.[id]);
+      const ctx = { mission: site, run: ok ? saved : newRun(site), profile: this.profile };
+      (this.profile.runs ||= {})[siteId] = ctx.run;
+      if (ok) { this.runs[siteId] = ctx; return ctx; }
       for (const id of site.entry) { const d = ctx.run.devices[id]; if (d) d.discovered = true; }
       this.runs[siteId] = ctx;
     }
@@ -58,6 +65,7 @@ export class App {
     this.ctx = this.ctxFor(siteId);
     this.profile.discovered[siteId] = true;
     this.goalSite = siteId;
+    this.profile.lastSite = siteId;
   }
 
   // ---------- commands ----------
@@ -66,7 +74,8 @@ export class App {
     if (choosers.includes(cmd)) { this.openChooser(cmd, target); return; }
     const { sheet } = exec(this.ctx, cmd, target);
     buzz('light');
-    if (cmd === 'CONNECT' && this.cur) this.sel = { type: 'device', id: this.cur };
+    if (cmd === 'CONNECT' && this.cur) { this.sel = { type: 'device', id: this.cur }; this.view = 'terminal'; }
+    this.persist();
     if (cmd === 'DISCONNECT' && (this.view === 'files' || this.view === 'system')) this.view = 'map';
     this.overlay = sheet ? { kind: 'read', sheet } : null;
     this.render();
@@ -81,6 +90,7 @@ export class App {
     const o = this.overlay;
     const { sheet } = exec(this.ctx, o.cmd, o.target, value);
     buzz('light');
+    this.persist();
     this.overlay = sheet ? { kind: 'read', sheet } : null;
     this.render();
   }
@@ -89,6 +99,7 @@ export class App {
     const o = this.overlay;
     for (const [key, value] of Object.entries(o.config)) exec(this.ctx, 'CONFIG', o.target, [key, value]);
     buzz('light');
+    this.persist();
     this.overlay = null;
     this.render();
   }
