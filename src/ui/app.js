@@ -167,7 +167,7 @@ export class App {
     if (k === 'disconnect') { if (!this.cur) return alert('Belum terhubung ke node.'); this.overlay = null; this.runCommand('DISCONNECT', { type: 'rig' }); return; }
     if (k === 'files') { if (!this.cur) return alert('CONNECT ke node dulu.'); this.overlay = null; this.openPage('files', 'LS'); return; }
     if (k === 'system') { if (!this.cur) return alert('CONNECT ke node dulu.'); this.overlay = null; this.openPage('system', 'PS'); return; }
-    if (k === 'controlpage') { if (!this.cur) return alert('CONNECT ke node dulu.'); this.overlay = null; this.view = 'control'; this.render(); return; }
+    if (k === 'controlpage') { if (!this.cur) return alert('CONNECT ke node dulu.'); this.overlay = null; this.openPage('control', 'CONTROL'); return; }
     if (k === 'search') {
       if (!this.cur) return alert('CONNECT ke node dulu.');
       this.overlay = null; this.view = 'terminal'; this.runCommand('SEARCH', { type: 'device', id: this.cur }); return;
