@@ -184,6 +184,20 @@ button:active:not(:disabled) { transform: scale(0.97); }
 .cat-cmd.locked { border-color: var(--line); background: var(--bg-panel); color: var(--muted); }
 .cat-cmd.locked b { color: var(--muted); }
 .cat-cmd .cat-lock { color: var(--amber); font-size: 15px; }
+.cat-group-btn { text-align: left; padding: 15px 16px; border: 1px solid var(--green-dim); border-radius: 12px; background: var(--green-ghost); color: var(--green); display: flex; flex-direction: column; gap: 4px; min-height: 64px; }
+.cat-group-btn b { font-size: 16px; font-weight: 700; letter-spacing: 0.5px; }
+.cat-group-btn small { color: var(--muted); font-size: 11px; font-family: var(--mono); }
+.cat-group-btn:active { background: rgba(69,240,154,0.2); }
+.back-row { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 13px; padding: 2px 0 10px; }
+.back-row .ic-svg { font-size: 18px; }
+
+/* unified map: dimmed city pins + rig origin + hint */
+.site-pin.dim { opacity: 0.28; }
+.site-pin.dim .pin-dot { animation: none; box-shadow: none; }
+.node.rig-node { border-color: var(--amber); width: 88px; }
+.node.rig-node .nm { color: var(--amber); }
+.node.rig-node .nm .ic-svg { color: var(--amber); }
+.map-hint { color: var(--faint); font-size: 11px; text-align: center; padding: 10px 6px 2px; }
 .log { font-family: var(--mono); }
 .log .entry { margin-bottom: 4px; white-space: pre-wrap; word-break: break-word; }
 .log .cmd { color: var(--green); }

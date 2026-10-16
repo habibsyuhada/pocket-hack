@@ -3,7 +3,7 @@ import { newProfile, newRun, TOOLS, LEVEL_LABEL, atLeast, device, visibleFiles }
 import { getActions, getChoices, exec, objectives, hint, endings, finish, LOCAL_CAP } from '../engine/actions.js';
 import { CMD_META, GROUPS, groupCommands, commandTargets } from '../engine/commands.js';
 import { hasCmd } from '../game/profile.js';
-import { CITY, WORLD_NODES, DIFF_LABEL, nodeFor, worldNodes, nodeState, availableJobs } from '../game/world.js';
+import { CITY, WORLD_NODES, DIFF_LABEL, nodeFor, worldNodes, nodeState } from '../game/world.js';
 import { MARKET, buy, canBuy, owned } from '../game/market.js';
 import { rankFor, nextRank, rankProgress } from '../game/progression.js';
 import { saveProfile, loadProfile, clearProfile, buzz } from '../platform/storage.js';
@@ -166,7 +166,7 @@ export class App {
     const el = this.h('div', { class: 'screen' });
     if (this.intro) { el.append(this.vIntro()); this.root.replaceChildren(el); return; }
     el.append(this.statusStrip());
-    const mapfull = this.view === 'map' && !this.ctx;
+    const mapfull = this.view === 'map';
     const pane = this.h('div', { class: 'pane' + (this.view === 'terminal' ? ' term' : '') + (mapfull ? ' mapfull' : '') });
     pane.append(...this.viewPane());
     el.append(pane);
@@ -226,16 +226,13 @@ export class App {
   viewPane() {
     if (this.view === 'market') return this.paneMarket();
     if (this.view === 'profile') return this.paneProfile();
-    if (!this.ctx) {
-      if (this.view === 'map') return this.paneWorld();
-      return this.emptyNeedJack();
-    }
-    if (this.view === 'map') return this.paneNet();
+    if (this.view === 'map') return this.paneMap();
+    if (!this.ctx) return this.emptyNeedJack();
     if (this.view === 'terminal') return this.paneTerminal();
     if (this.view === 'goals') return this.paneObjectives();
     if (this.view === 'files') return this.paneFiles();
     if (this.view === 'system') return this.paneSystem();
-    return this.paneWorld();
+    return this.paneMap();
   }
 
   emptyNeedJack() {
@@ -245,32 +242,59 @@ export class App {
       h('button', { class: 'jackin', style: 'max-width:260px;margin:14px auto 0;display:block', onclick: () => { this.view = 'map'; this.render(); } }, '▸ KE PETA')];
   }
 
-  // ===== WORLD (city map) =====
-  paneWorld() {
+  // ===== unified map: city targets + (when jacked in) network nodes =====
+  paneMap() {
     const h = this.h.bind(this);
     const map = h('div', { class: 'worldmap' });
+
+    // network edges first (under the pins), only while jacked in
+    if (this.ctx) {
+      const run = this.ctx.run;
+      const devs = Object.values(run.devices).filter((d) => d.discovered);
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('class', 'edge');
+      for (const d of devs) for (const l of d.links || []) {
+        const t = run.devices[l];
+        if (!t?.discovered) continue;
+        const ln = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        ln.setAttribute('x1', d.x + '%'); ln.setAttribute('y1', d.y + '%');
+        ln.setAttribute('x2', t.x + '%'); ln.setAttribute('y2', t.y + '%');
+        svg.append(ln);
+      }
+      map.append(svg);
+    }
+
+    // city target pins — dimmed into the background while jacked in
     for (const n of worldNodes(this.profile)) {
-      const sel = this.selSite === n.id;
-      map.append(h('button', { class: 'site-pin ' + n.state + (sel ? ' sel' : ''), style: `left:${n.x}%;top:${n.y}%`,
-        onclick: () => { if (n.state === 'locked') { alert('Sinyal lemah. Naikkan reputasi atau beli intel untuk membuka lokasi ini.'); return; } this.selSite = n.id; this.render(); } },
+      map.append(h('button', { class: 'site-pin ' + n.state + (this.ctx ? ' dim' : ''), style: `left:${n.x}%;top:${n.y}%`,
+        onclick: () => {
+          if (this.ctx) return;
+          if (n.state === 'locked') { alert('Sinyal lemah. Naikkan reputasi atau beli intel untuk membuka lokasi ini.'); return; }
+          this.overlay = { kind: 'site', id: n.id }; this.render();
+        } },
         h('span', { class: 'pin-dot' }, n.state === 'cleared' ? '✓' : n.state === 'locked' ? '?' : '◉'),
         h('span', { class: 'pin-nm' }, n.state === 'locked' ? '???' : n.site.title)));
     }
-    const out = [h('div', { class: 'section-h' }, 'Peta Kota'), map];
-    const n = this.selSite ? nodeFor(this.selSite) : null;
-    if (n) {
-      const st = nodeState(this.profile, n.id);
-      out.push(h('div', { class: 'site-card' },
-        h('div', { class: 'code' }, n.site.code, ' · ', n.district, ' · ', DIFF_LABEL[n.difficulty]),
-        h('h3', {}, n.site.title),
-        h('p', {}, n.short),
-        h('div', { class: 'foot' },
-          st === 'cleared' && h('span', { class: 'badge' }, '✓ selesai'),
-          h('span', { class: 'reward' }, `+${n.site.reward} ◆ · +${n.repReward} rep`)),
-        h('button', { class: 'jackin', onclick: () => this.jackIn(n.id) }, '▸ JACK IN')));
-    } else {
-      out.push(h('div', { class: 'empty' }, 'Ketuk sebuah pin di peta untuk melihat targetnya.'));
+
+    // network nodes + rig origin, on the SAME map
+    if (this.ctx) {
+      const run = this.ctx.run;
+      for (const d of Object.values(run.devices).filter((x) => x.discovered)) {
+        const cur = run.current === d.id;
+        map.append(h('button', { class: 'node' + (cur ? ' cur' : '') + (d.online ? '' : ' off'), style: `left:${d.x}%;top:${d.y}%`,
+          onclick: () => cur ? (this.view = 'files', this.render()) : this.tapObject({ type: 'device', id: d.id }) },
+          h('div', { class: 'nm' }, this.ic(d.kind), d.name),
+          h('div', { class: 'ad' }, d.addr),
+          h('div', { class: 'st ' + (d.access !== 'none' ? 'a' : d.online && !d.statusText ? '' : 'o') },
+            d.access !== 'none' ? LEVEL_LABEL[d.access] : !d.online ? 'OFFLINE' : d.statusText || 'TERLIHAT')));
+      }
+      map.append(h('button', { class: 'node rig-node', style: 'left:50%;top:93%', onclick: () => this.tapObject({ type: 'rig' }) },
+        h('div', { class: 'nm' }, this.ic('rig'), 'RIG'),
+        h('div', { class: 'ad' }, 'ketuk: SCAN')));
     }
+
+    const out = [h('div', { class: 'section-h' }, this.ctx ? `${this.ctx.mission.code} · ${this.ctx.mission.title}` : 'Peta Kota'), map];
+    if (this.ctx) out.push(h('div', { class: 'map-hint' }, 'Ketuk RIG untuk SCAN · node untuk aksi · node terhubung buka File'));
     return out;
   }
 
@@ -320,49 +344,6 @@ export class App {
         h('div', { class: 'ic' }, this.ic('doc')), h('div', { class: 'main' }, h('b', {}, f.name))));
     }
     out.push(h('button', { class: 'linklike', onclick: () => confirm('Hapus semua progres?') && this.resetGame() }, 'reset progres'));
-    return out;
-  }
-
-  // ===== NET (network map while jacked in) =====
-  paneNet() {
-    const h = this.h.bind(this);
-    const run = this.ctx.run;
-    const devs = Object.values(run.devices).filter((d) => d.discovered);
-    const map = h('div', { class: 'map' });
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('class', 'edge');
-    for (const d of devs) for (const l of d.links || []) {
-      const t = run.devices[l];
-      if (!t?.discovered) continue;
-      const ln = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      ln.setAttribute('x1', d.x + '%'); ln.setAttribute('y1', d.y + '%');
-      ln.setAttribute('x2', t.x + '%'); ln.setAttribute('y2', t.y + '%');
-      svg.append(ln);
-    }
-    map.append(svg);
-    for (const d of devs) {
-      const cur = run.current === d.id;
-      map.append(h('button', { class: 'node' + (cur ? ' cur' : '') + (d.online ? '' : ' off'), style: `left:${d.x}%;top:${d.y}%`,
-        onclick: () => cur ? (this.view = 'files', this.render()) : this.tapObject({ type: 'device', id: d.id }) },
-        h('div', { class: 'nm' }, this.ic(d.kind), d.name),
-        h('div', { class: 'ad' }, d.addr),
-        h('div', { class: 'st ' + (d.access !== 'none' ? 'a' : d.online && !d.statusText ? '' : 'o') },
-          d.access !== 'none' ? LEVEL_LABEL[d.access] : !d.online ? 'OFFLINE' : d.statusText || 'TERLIHAT')));
-    }
-    const rigCard = h('button', { class: 'devhead rig', onclick: () => this.tapObject({ type: 'rig' }) },
-      h('div', { class: 'ic' }, this.ic('rig')),
-      h('div', { class: 'main' }, h('b', {}, 'Rig lokal'), h('small', {}, 'ketuk untuk SCAN jaringan')),
-      h('div', { class: 'tag-r', style: 'color:var(--green)' }, 'SCAN'));
-    const out = [rigCard, map];
-    if (!devs.length) out.push(h('div', { class: 'empty' }, 'Belum ada perangkat.\nKetuk kartu "Rig lokal" lalu SCAN.'));
-    out.push(h('div', { class: 'section-h' }, 'Perangkat'));
-    for (const d of devs) {
-      const cur = run.current === d.id;
-      out.push(h('button', { class: 'obj', onclick: () => cur ? (this.view = 'files', this.render()) : this.tapObject({ type: 'device', id: d.id }) },
-        h('div', { class: 'ic' }, this.ic(d.kind)),
-        h('div', { class: 'main' }, h('b', {}, d.name), h('small', {}, `${d.kind} · ${d.addr}`)),
-        h('div', { class: 'tag-r' }, cur ? 'TERHUBUNG ▸' : d.access !== 'none' ? LEVEL_LABEL[d.access] : '')));
-    }
     return out;
   }
 
@@ -504,10 +485,34 @@ export class App {
           h('b', {}, a.cmd), a.enabled ? h('span', {}, '▸') : h('small', { class: 'reason' }, a.reason)));
       }
       sheet.append(h('button', { class: 'act dim', onclick: close }, 'TUTUP'));
+    } else if (o.kind === 'site') {
+      const n = nodeFor(o.id);
+      const st = nodeState(this.profile, n.id);
+      sheet.append(
+        h('div', { class: 'code', style: 'color:var(--green);font-size:12px;font-family:var(--mono)' }, n.site.code, ' · ', n.district, ' · ', DIFF_LABEL[n.difficulty]),
+        h('h2', {}, n.site.title),
+        h('p', { style: 'color:var(--muted);font-size:13px;margin:6px 0 2px' }, n.site.client),
+        h('p', { style: 'color:var(--ink);font-size:13px;margin:8px 0' }, n.site.brief),
+        h('div', { style: 'display:flex;align-items:center;gap:10px;margin:8px 0' },
+          st === 'cleared' && h('span', { class: 'badge' }, '✓ selesai'),
+          h('span', { style: 'color:var(--amber);font-weight:600;margin-left:auto' }, `+${n.site.reward} ◆ · +${n.repReward} rep`)),
+        h('button', { class: 'jackin', onclick: () => this.jackIn(n.id) }, '▸ JACK IN'));
     } else if (o.kind === 'catalog') {
-      sheet.append(h('h2', {}, 'Command'));
-      for (const g of GROUPS) {
-        sheet.append(h('div', { class: 'cat-group' }, g.name));
+      if (!o.group) {
+        sheet.append(h('h2', {}, 'Command'));
+        const grid = h('div', { class: 'cat-grid' });
+        for (const g of GROUPS) {
+          const cmds = groupCommands(g.id);
+          const avail = cmds.filter((c) => hasCmd(this.profile, c)).length;
+          grid.append(h('button', { class: 'cat-group-btn', onclick: () => { o.group = g.id; this.render(); } },
+            h('b', {}, g.name),
+            h('small', {}, `${avail}/${cmds.length} command`)));
+        }
+        sheet.append(grid, h('button', { class: 'act dim', onclick: close }, 'TUTUP'));
+      } else {
+        const g = GROUPS.find((x) => x.id === o.group);
+        sheet.append(h('button', { class: 'back-row', onclick: () => { o.group = null; this.render(); } }, this.ic('back'), ' Semua grup'),
+          h('h2', {}, g.name));
         const grid = h('div', { class: 'cat-grid' });
         for (const cmd of groupCommands(g.id)) {
           const locked = !hasCmd(this.profile, cmd);
@@ -516,9 +521,8 @@ export class App {
             h('b', {}, cmd),
             locked ? h('span', { class: 'cat-lock' }, this.ic('lock')) : h('small', {}, CMD_META[cmd].desc)));
         }
-        sheet.append(grid);
+        sheet.append(grid, h('button', { class: 'act dim', onclick: close }, 'TUTUP'));
       }
-      sheet.append(h('button', { class: 'act dim', onclick: close }, 'TUTUP'));
     } else if (o.kind === 'param') {
       sheet.append(h('h2', {}, o.cmd), h('p', { style: 'color:var(--muted);font-size:12px;margin:0 0 10px' }, 'Pilih sasaran:'));
       for (const t of o.targets) {
