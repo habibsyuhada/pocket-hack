@@ -6,6 +6,7 @@ import { hasCmd, loadMs } from '../game/profile.js';
 import { DEFAULT_CMDS } from '../engine/commands.js';
 import { CITY, WORLD_NODES, DIFF_LABEL, nodeFor, worldNodes, isAccepted } from '../game/world.js';
 import { MARKET, buy, canBuy, owned } from '../game/market.js';
+import { HINT_COST } from '../game/profile.js';
 import { rankFor, nextRank, rankProgress } from '../game/progression.js';
 import { saveProfile, loadProfile, clearProfile, buzz } from '../platform/storage.js';
 import { iconSvg } from './icons.js';
@@ -27,8 +28,10 @@ export class App {
     this.sel = { type: 'rig' };
     this.selSite = null;
     this.showHint = false;
+    this.hintText = '';              // text of the hint the player paid for
     this.overlay = null;
     this.busy = null;               // { label, ms } while a command is loading
+    this.notice = null;             // in-game toast { id, msg, icon }
     this.intro = false;
     this.mapView = null;             // { x, y, scale } pan/zoom, lazily centered
     this._dragged = false;
@@ -84,6 +87,24 @@ export class App {
     this.profile.discovered[siteId] = true;
     this.goalSite = siteId;
     this.profile.lastSite = siteId;
+  }
+
+  // ---------- in-game notices (replace browser alert/confirm) ----------
+  toast(msg, icon) {
+    const id = (this._toastId = (this._toastId || 0) + 1);
+    this.notice = { id, msg, icon: icon || (/terkunci/i.test(msg) ? 'lock' : 'hint') };
+    buzz('light');
+    this.render();
+    setTimeout(() => {
+      if (this.notice?.id !== id) return;
+      this.notice = null;
+      this.root.querySelector('.toast')?.remove();
+    }, 2800);
+  }
+
+  confirmBox(title, text, okLabel, onOk) {
+    this.overlay = { kind: 'confirm', title, text, okLabel, onOk };
+    this.render();
   }
 
   // ---------- loading ----------
@@ -157,24 +178,24 @@ export class App {
   openCatalog() { this.overlay = { kind: 'catalog', group: null }; this.render(); }
 
   runCatalog(cmd) {
-    if (!hasCmd(this.profile, cmd)) { alert('Command terkunci. Beli di Pasar.'); return; }
+    if (!hasCmd(this.profile, cmd)) { this.toast('Command terkunci. Beli di Pasar.'); return; }
     const meta = CMD_META[cmd];
     const k = meta.kind;
-    if (k === 'soon') { alert(`${cmd}: segera hadir di update berikutnya.`); return; }
+    if (k === 'soon') { this.toast(`${cmd}: segera hadir di update berikutnya.`); return; }
     if (k === 'map') { this.overlay = null; this.view = 'map'; this.render(); return; }
-    if (!this.ctx) { alert('Pilih node di peta dulu.'); return; }
-    if (k === 'scan') { if (!this.ctx) return alert('Pilih node di peta dulu.'); this.overlay = null; this.runCommand('SCAN', this.cur ? { type: 'device', id: this.cur } : { type: 'rig' }); return; }
-    if (k === 'disconnect') { if (!this.cur) return alert('Belum terhubung ke node.'); this.overlay = null; this.runCommand('DISCONNECT', { type: 'rig' }); return; }
-    if (k === 'files') { if (!this.cur) return alert('CONNECT ke node dulu.'); this.overlay = null; this.openPage('files', 'LS'); return; }
-    if (k === 'system') { if (!this.cur) return alert('CONNECT ke node dulu.'); this.overlay = null; this.openPage('system', 'PS'); return; }
-    if (k === 'controlpage') { if (!this.cur) return alert('CONNECT ke node dulu.'); this.overlay = null; this.openPage('control', 'CONTROL'); return; }
+    if (!this.ctx) { this.toast('Pilih node di peta dulu.'); return; }
+    if (k === 'scan') { if (!this.ctx) return this.toast('Pilih node di peta dulu.'); this.overlay = null; this.runCommand('SCAN', this.cur ? { type: 'device', id: this.cur } : { type: 'rig' }); return; }
+    if (k === 'disconnect') { if (!this.cur) return this.toast('Belum terhubung ke node.'); this.overlay = null; this.runCommand('DISCONNECT', { type: 'rig' }); return; }
+    if (k === 'files') { if (!this.cur) return this.toast('CONNECT ke node dulu.'); this.overlay = null; this.openPage('files', 'LS'); return; }
+    if (k === 'system') { if (!this.cur) return this.toast('CONNECT ke node dulu.'); this.overlay = null; this.openPage('system', 'PS'); return; }
+    if (k === 'controlpage') { if (!this.cur) return this.toast('CONNECT ke node dulu.'); this.overlay = null; this.openPage('control', 'CONTROL'); return; }
     if (k === 'search') {
-      if (!this.cur) return alert('CONNECT ke node dulu.');
+      if (!this.cur) return this.toast('CONNECT ke node dulu.');
       this.overlay = null; this.view = 'terminal'; this.runCommand('SEARCH', { type: 'device', id: this.cur }); return;
     }
     // target-based: device / connect / file / proc / control
     const targets = commandTargets(this.ctx, cmd);
-    if (!targets.length) { alert(this.cur ? `Tidak ada sasaran untuk ${cmd} di node ini.` : 'CONNECT ke node dulu.'); return; }
+    if (!targets.length) { this.toast(this.cur ? `Tidak ada sasaran untuk ${cmd} di node ini.` : 'CONNECT ke node dulu.'); return; }
     if (targets.length === 1 && targets[0].enabled) { this.runFromCatalog(cmd, targets[0].target); return; }
     this.overlay = { kind: 'param', cmd, targets };
     this.render();
@@ -200,7 +221,7 @@ export class App {
 
   doBuy(itemId) {
     const r = buy(this.profile, itemId);
-    if (r.ok) { this.persist(); buzz('light'); } else alert(r.msg);
+    if (r.ok) { this.persist(); buzz('light'); } else this.toast(r.msg);
     this.render();
   }
 
@@ -229,12 +250,18 @@ export class App {
     const pane = this.h('div', { class: 'pane' + (this.view === 'terminal' ? ' term' : '') + (mapfull ? ' mapfull' : '') });
     pane.append(...this.viewPane());
     el.append(pane);
-    if (this.showHint && this.ctx) el.append(this.h('div', { class: 'hint' }, '💡 ', hint(this.ctx)));
+    if (this.showHint && this.ctx) el.append(this.h('div', { class: 'hint' }, '💡 ', this.hintText));
     el.append(this.dock());
     if (this.overlay) el.append(this.vOverlay());
     if (this.busy) el.append(this.vLoading());
+    if (this.notice) el.append(this.vToast());
     this.root.replaceChildren(el);
     if (this.view === 'map') this.setupMap();
+  }
+
+  vToast() {
+    const h = this.h.bind(this);
+    return h('div', { class: 'toast', onclick: () => { this.notice = null; this.render(); } }, this.ic(this.notice.icon), h('span', {}, this.notice.msg));
   }
 
   vLoading() {
@@ -283,12 +310,25 @@ export class App {
       h('span', { class: 'loc' }, site.code, ' ', site.title),
       this.cur && h('span', { class: 'lv' }, LEVEL_LABEL[device(this.ctx.run, this.cur).access]),
       h('span', { class: 'spacer' }),
-      h('span', { class: 'df' }, DIFF_LABEL[node?.difficulty || 1]),
+      h('span', { class: 'cr' }, '◆ ', String(this.profile.credits)),
       this.hintBtn());
   }
 
   hintBtn() {
-    return this.h('button', { class: 'hintbtn' + (this.showHint ? ' on' : ''), onclick: () => { this.showHint = !this.showHint; this.render(); } }, this.ic('hint'));
+    return this.h('button', { class: 'hintbtn' + (this.showHint ? ' on' : ''), onclick: () => this.toggleHint() },
+      this.ic('hint'), !this.showHint && this.h('span', { class: 'hint-cost' }, `◆${HINT_COST}`));
+  }
+
+  // Hints cost credits; the text is fixed at the moment it is bought.
+  toggleHint() {
+    if (this.showHint) { this.showHint = false; this.render(); return; }
+    if (!this.ctx) return this.toast('Terima misi dan pilih node dulu untuk meminta hint.');
+    if (this.profile.credits < HINT_COST) return this.toast(`Kredit tidak cukup. Hint butuh ◆ ${HINT_COST}.`);
+    this.profile.credits -= HINT_COST;
+    this.hintText = hint(this.ctx);
+    this.showHint = true;
+    this.persist();
+    this.render();
   }
 
   // ---------- view router ----------
@@ -330,9 +370,10 @@ export class App {
     const inner = h('div', { class: 'map-inner', style: `width:${MAPW}px;height:${MAPH}px` });
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('class', 'edge'); svg.setAttribute('width', MAPW); svg.setAttribute('height', MAPH);
-    const line = (a, b) => {
+    const line = (a, b, dashed) => {
       const ln = document.createElementNS('http://www.w3.org/2000/svg', 'line');
       ln.setAttribute('x1', a.x); ln.setAttribute('y1', a.y); ln.setAttribute('x2', b.x); ln.setAttribute('y2', b.y);
+      if (dashed) ln.setAttribute('stroke-dasharray', '4 6');
       svg.append(ln);
     };
     inner.append(svg);
@@ -343,18 +384,19 @@ export class App {
     for (const n of sites) {
       const base = { x: (n.x / 100) * MAPW, y: (n.y / 100) * MAPH };
       const acc = isAccepted(this.profile, n.id), locked = n.state === 'locked', cleared = n.state === 'cleared';
-      if (!center && !locked && !cleared) center = base;
+      const mpos = { x: base.x, y: base.y - CLUSTER * 0.5 };   // mission node sits above its device cluster
+      if (!center && !locked && !cleared) center = acc ? base : mpos;
       if (this._centerOn === n.id) center = base;
       // one node = one mission: the mission node sits at the heart of its site
       cards.push(this.nodeCardPx({
         cls: 'node-target' + (locked ? ' off' : '') + (cleared ? ' done' : '') + (acc && !cleared ? ' live' : ''),
-        cx: base.x, cy: base.y, icon: 'target',
+        cx: mpos.x, cy: mpos.y, icon: 'target',
         title: locked ? '???' : n.site.title,
         sub: locked ? 'sinyal lemah' : `${n.site.code} · ${n.district}`,
         st: locked ? 'TERKUNCI' : cleared ? 'SELESAI' : acc ? 'AKTIF' : 'MISI BARU',
         stCls: locked ? '' : 'a',
         onclick: () => {
-          if (locked) { alert('Sinyal lemah. Naikkan reputasi atau beli intel untuk membuka misi ini.'); return; }
+          if (locked) { this.toast('Sinyal lemah. Naikkan reputasi atau beli intel untuk membuka misi ini.'); return; }
           if (acc) { this.focus(n.id); this.view = 'goals'; this.render(); return; }
           this.overlay = { kind: 'mission', id: n.id }; this.render();
         }
@@ -364,6 +406,7 @@ export class App {
       const dpos = (d) => ({ x: base.x + ((d.x - 50) / 100) * CLUSTER, y: base.y + ((d.y - 50) / 100) * CLUSTER });
       const devs = Object.values(run.devices).filter((d) => d.discovered);
       for (const d of devs) for (const l of d.links || []) { const t = run.devices[l]; if (t?.discovered) line(dpos(d), dpos(t)); }
+      for (const id of n.site.entry) { const e = run.devices[id]; if (e?.discovered) line(mpos, dpos(e), true); }
       for (const d of devs) {
         const cur = run.current === d.id, p = dpos(d);
         cards.push(this.nodeCardPx({
@@ -468,7 +511,7 @@ export class App {
         h('div', { class: 'main' }, h('b', {}, item.name), h('small', {}, item.desc)),
         have
           ? h('span', { class: 'tag-r', style: 'color:var(--green)' }, 'DIMILIKI')
-          : h('button', { class: 'buy' + (c.ok ? '' : ' off'), onclick: () => c.ok ? this.doBuy(item.id) : alert(c.reason) }, `◆ ${item.cost}`)));
+          : h('button', { class: 'buy' + (c.ok ? '' : ' off'), onclick: () => c.ok ? this.doBuy(item.id) : this.toast(c.reason) }, `◆ ${item.cost}`)));
     }
     return out;
   }
@@ -503,7 +546,7 @@ export class App {
       out.push(h('button', { class: 'obj', onclick: () => { this.overlay = { kind: 'read', sheet: { title: f.name, content: f.content } }; this.render(); } },
         h('div', { class: 'ic' }, this.ic('doc')), h('div', { class: 'main' }, h('b', {}, f.name))));
     }
-    out.push(h('button', { class: 'linklike', onclick: () => confirm('Hapus semua progres?') && this.resetGame() }, 'reset progres'));
+    out.push(h('button', { class: 'linklike', onclick: () => this.confirmBox('Hapus semua progres?', 'Semua kredit, rep, dan progres misi akan hilang.', 'HAPUS', () => this.resetGame()) }, 'reset progres'));
     return out;
   }
 
@@ -561,7 +604,7 @@ export class App {
     const files = visibleFiles(run, d.id);
     const out = [this.deviceHeader(), h('div', { class: 'section-h' }, `File Server · ${LEVEL_LABEL[d.access]}`),
       h('button', { class: 'obj' + (hasCmd(this.profile, 'SEARCH') ? '' : ' locked'),
-        onclick: () => { if (!hasCmd(this.profile, 'SEARCH')) return alert('SEARCH terkunci. Beli di Pasar.'); this.view = 'terminal'; this.runCommand('SEARCH', { type: 'device', id: d.id }); } },
+        onclick: () => { if (!hasCmd(this.profile, 'SEARCH')) return this.toast('SEARCH terkunci. Beli di Pasar.'); this.view = 'terminal'; this.runCommand('SEARCH', { type: 'device', id: d.id }); } },
         h('div', { class: 'ic' }, this.ic(hasCmd(this.profile, 'SEARCH') ? 'terminal' : 'lock')),
         h('div', { class: 'main' }, h('b', {}, 'SEARCH'), h('small', {}, 'cari kata kunci di semua file node ini')))];
     if (!files.length) out.push(h('div', { class: 'empty' }, 'Tidak ada file yang bisa diakses pada level ini.'));
@@ -663,6 +706,10 @@ export class App {
           h('b', {}, a.cmd), a.enabled ? h('span', {}, '▸') : h('small', { class: 'reason' }, a.reason)));
       }
       sheet.append(h('button', { class: 'act dim', onclick: close }, 'TUTUP'));
+    } else if (o.kind === 'confirm') {
+      sheet.append(h('h2', {}, o.title), h('p', { style: 'color:var(--muted);font-size:13px;margin:6px 0 12px' }, o.text),
+        h('button', { class: 'act danger', onclick: () => { this.overlay = null; o.onOk(); } }, o.okLabel),
+        h('button', { class: 'act dim', onclick: close }, 'BATAL'));
     } else if (o.kind === 'mission') {
       const n = nodeFor(o.id);
       sheet.append(
@@ -694,7 +741,7 @@ export class App {
         for (const cmd of groupCommands(g.id)) {
           const locked = !hasCmd(this.profile, cmd);
           grid.append(h('button', { class: 'cat-cmd' + (locked ? ' locked' : ''), title: CMD_META[cmd].desc,
-            onclick: () => { if (locked) { alert('Terkunci. Beli di Pasar.'); return; } this.runCatalog(cmd); } },
+            onclick: () => { if (locked) { this.toast('Terkunci. Beli di Pasar.'); return; } this.runCatalog(cmd); } },
             h('b', {}, cmd),
             locked ? h('span', { class: 'cat-lock' }, this.ic('lock')) : h('small', {}, CMD_META[cmd].desc)));
         }

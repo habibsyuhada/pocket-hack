@@ -35,6 +35,9 @@ export function newProfile() {
 }
 
 // Every command runs behind a full-screen loading; market upgrades shorten it.
+// Credits spent per hint.
+export const HINT_COST = 10;
+
 export const LOAD_MS = [1800, 1100, 600, 250];
 export const loadMs = (profile) => LOAD_MS[Math.min(profile.speed || 0, LOAD_MS.length - 1)];
 
