@@ -163,6 +163,27 @@ button:active:not(:disabled) { transform: scale(0.97); }
 .pane.term .termchip:active { background: rgba(69,240,154,0.2); }
 .pane.term .termchip.off { border-color: var(--line); color: var(--faint); background: none; }
 .pane.term .term-hint { background: var(--bg-panel); color: var(--faint); font-size: 11px; padding: 0 12px 10px; }
+/* terminal CMDS bar */
+.pane.term .termbar { border-top: 1px solid var(--line); background: var(--bg-panel); padding: 11px 12px calc(11px + 0px); display: flex; align-items: center; gap: 12px; }
+.cmds-btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 22px; border: none; border-radius: 12px; font-weight: 700; letter-spacing: 1.5px; font-size: 15px; color: #04120b; background: linear-gradient(180deg, var(--green), var(--green-dim)); box-shadow: var(--glow-md); }
+.cmds-btn .ic-svg { font-size: 18px; }
+.cmds-btn:active { filter: brightness(1.1); }
+.term-ctx { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+
+/* jack-out button in status strip */
+.jackoutbtn { width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid rgba(255,122,94,0.4); border-radius: 10px; color: var(--red); }
+.jackoutbtn .ic-svg { font-size: 18px; }
+
+/* command catalog */
+.cat-group { color: var(--green); font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; margin: 14px 2px 8px; }
+.cat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.cat-cmd { text-align: left; padding: 11px 12px; border: 1px solid var(--green-dim); border-radius: 11px; background: var(--green-ghost); color: var(--green); display: flex; flex-direction: column; gap: 3px; min-height: 58px; }
+.cat-cmd b { font-family: var(--mono); font-size: 14px; letter-spacing: 0.5px; }
+.cat-cmd small { color: var(--muted); font-size: 10px; line-height: 1.25; }
+.cat-cmd:active { background: rgba(69,240,154,0.2); }
+.cat-cmd.locked { border-color: var(--line); background: var(--bg-panel); color: var(--muted); }
+.cat-cmd.locked b { color: var(--muted); }
+.cat-cmd .cat-lock { color: var(--amber); font-size: 15px; }
 .log { font-family: var(--mono); }
 .log .entry { margin-bottom: 4px; white-space: pre-wrap; word-break: break-word; }
 .log .cmd { color: var(--green); }

@@ -1,6 +1,6 @@
 import {
   LEVEL_LABEL, TOOLS, atLeast, applyEffects, configValid, device, findFile,
-  fileVisible, lockingProc, reachable
+  fileVisible, lockingProc, reachable, visibleFiles
 } from './core.js';
 
 // Contextual command model: the player picks an object, the game offers the
@@ -186,6 +186,16 @@ export function exec(ctx, cmd, target, arg) {
       run.current = null;
       out.push({ t: 'out', text: 'Kembali ke rig lokal.' });
       break;
+    case 'SEARCH': {
+      const files = d ? visibleFiles(run, d.id) : [];
+      if (!files.length) { out.push({ t: 'out', text: 'Tidak ada file untuk dipindai.' }); break; }
+      out.push({ t: 'out', text: `Memindai ${files.length} file di ${d.name}:` });
+      for (const f of files) {
+        const first = String(f.content || '').split('\n').find((l) => l.trim()) || '(kosong)';
+        out.push({ t: 'out', text: `  ${f.name} — ${first.slice(0, 40)}` });
+      }
+      break;
+    }
     case 'INSPECT':
       sheet = { type: 'read', title: d.name, content: d.inspect };
       out.push({ t: 'out', text: `${d.kind} · akses kamu: ${LEVEL_LABEL[d.access]}` });

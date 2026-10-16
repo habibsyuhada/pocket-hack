@@ -5,6 +5,14 @@ export const TOOLS = {
   cipher: { id: 'cipher', name: 'Cipher', ram: 1, cmd: 'DECRYPT', desc: 'Membuka file terkunci dengan kunci yang kamu simpulkan.' }
 };
 
+// Commands unlocked from the start — everything the 4 sites need, so the
+// player is never blocked. Kept here (not imported) to avoid a cycle.
+const DEFAULT_CMDS = [
+  'SCAN', 'INSPECT', 'MAP', 'CONNECT', 'LOGIN', 'CRACK', 'EXPLOIT', 'ELEVATE', 'DISCONNECT',
+  'LS', 'READ', 'DOWNLOAD', 'RECOVER', 'DECRYPT', 'COMPARE',
+  'PS', 'STOP', 'START', 'CONFIG', 'RESTORE', 'CONTROL'
+];
+
 export function newProfile() {
   return {
     v: 1,
@@ -19,9 +27,12 @@ export function newProfile() {
     discovered: { s00: true },  // first site visible from the start
     cleared: {},
     intel: {},                  // siteId -> true (bought scouting intel)
+    cmds: [...DEFAULT_CMDS],     // unlocked commands
     location: 'tengah'
   };
 }
+
+export const hasCmd = (profile, cmd) => (profile.cmds || DEFAULT_CMDS).includes(cmd);
 
 export function ramUsed(profile) {
   return profile.active.reduce((sum, id) => sum + (TOOLS[id]?.ram || 0), 0);

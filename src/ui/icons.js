@@ -13,6 +13,7 @@ export const ICONS = {
   target: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1"/>',
   hint: '<path d="M9 18h6M10 21h4M12 3a6 6 0 0 1 4 10.5c-.6.7-1 1.4-1 2.5H9c0-1.1-.4-1.8-1-2.5A6 6 0 0 1 12 3Z"/>',
   back: '<path d="M15 6l-6 6 6 6"/>',
+  lock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
   doc: '<path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/><path d="M14 3v5h5M9 13h6M9 17h6"/>',
   proc: '<path d="M8 6l-4 6 4 6M16 6l4 6-4 6"/>',
   control: '<path d="M4 8h10M18 8h2M4 16h2M10 16h10"/><circle cx="16" cy="8" r="2"/><circle cx="8" cy="16" r="2"/>',

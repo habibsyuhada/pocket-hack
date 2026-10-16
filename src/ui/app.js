@@ -1,25 +1,25 @@
 import { SITES, siteById } from '../sites/index.js';
 import { newProfile, newRun, TOOLS, LEVEL_LABEL, atLeast, device, visibleFiles } from '../engine/core.js';
 import { getActions, getChoices, exec, objectives, hint, endings, finish, LOCAL_CAP } from '../engine/actions.js';
+import { CMD_META, GROUPS, groupCommands, commandTargets } from '../engine/commands.js';
+import { hasCmd } from '../game/profile.js';
 import { CITY, WORLD_NODES, DIFF_LABEL, nodeFor, worldNodes, nodeState, availableJobs } from '../game/world.js';
 import { MARKET, buy, canBuy, owned } from '../game/market.js';
 import { rankFor, nextRank, rankProgress } from '../game/progression.js';
 import { saveProfile, loadProfile, clearProfile, buzz } from '../platform/storage.js';
-
 import { iconSvg } from './icons.js';
 
-const TAB_ICON = { map: 'map', jobs: 'jobs', market: 'market', profile: 'profile', net: 'node', term: 'terminal', obj: 'target', files: 'file', sys: 'system', _exitMission: 'exit', _exitNode: 'exit' };
+const TAB_ICON = { map: 'map', terminal: 'terminal', goals: 'target', market: 'market', profile: 'profile' };
+const TABS = [['map', 'Peta'], ['terminal', 'Terminal'], ['goals', 'Goals'], ['market', 'Pasar'], ['profile', 'Profil']];
 
 export class App {
   constructor(root) {
     this.root = root;
     this.profile = newProfile();
-    this.ctx = null;                 // null = world scene
-    this.worldTab = 'map';
-    this.netTab = 'net';
-    this.devTab = 'term';
+    this.ctx = null;                 // active target run, or null when roaming
+    this.view = 'map';               // map | terminal | goals | market | profile | files | system
     this.sel = { type: 'rig' };
-    this.selSite = null;             // highlighted site on world map
+    this.selSite = null;
     this.showHint = false;
     this.overlay = null;
     this.intro = false;
@@ -28,24 +28,21 @@ export class App {
   async boot() {
     const saved = await loadProfile();
     if (saved) this.profile = { ...newProfile(), ...saved };
-    this.intro = !saved;             // first run → show intro
+    this.intro = !saved;
     this.render();
   }
 
   persist() { saveProfile(this.profile); }
+  get cur() { return this.ctx?.run.current || null; }
 
-  get scene() {
-    if (!this.ctx) return 'world';
-    return this.ctx.run.current ? 'device' : 'net';
-  }
-
-  // ---------- scene transitions ----------
+  // ---------- transitions ----------
   jackIn(siteId) {
     const site = siteById(siteId);
     if (!site) return;
     this.profile.discovered[siteId] = true;
     this.ctx = { mission: site, run: newRun(site), profile: this.profile };
-    this.netTab = 'net';
+    for (const id of site.entry) { const d = this.ctx.run.devices[id]; if (d) d.discovered = true; }
+    this.view = 'map';
     this.sel = { type: 'rig' };
     this.showHint = false;
     this.overlay = null;
@@ -55,7 +52,7 @@ export class App {
 
   jackOut() {
     this.ctx = null;
-    this.worldTab = 'map';
+    this.view = 'map';
     this.overlay = null;
     this.persist();
     this.render();
@@ -65,12 +62,10 @@ export class App {
   runCommand(cmd, target) {
     const choosers = ['LOGIN', 'CRACK', 'DECRYPT', 'COMPARE', 'CONFIG', 'CONTROL'];
     if (choosers.includes(cmd)) { this.openChooser(cmd, target); return; }
-    const prevInside = !!this.ctx.run.current;
     const { sheet } = exec(this.ctx, cmd, target);
     buzz('light');
-    // CONNECT/DISCONNECT change scene → set a sensible default tab
-    if (!prevInside && this.ctx.run.current) { this.devTab = 'term'; this.sel = { type: 'device', id: this.ctx.run.current }; }
-    if (prevInside && !this.ctx.run.current) { this.netTab = 'net'; this.sel = { type: 'rig' }; }
+    if (cmd === 'CONNECT' && this.cur) this.sel = { type: 'device', id: this.cur };
+    if (cmd === 'DISCONNECT' && (this.view === 'files' || this.view === 'system')) this.view = 'map';
     this.overlay = sheet ? { kind: 'read', sheet } : null;
     this.render();
   }
@@ -96,12 +91,43 @@ export class App {
     this.render();
   }
 
-  // open the full command sheet for a tapped object
   tapObject(target) {
     this.sel = target;
-    const acts = getActions(this.ctx, target);
-    this.overlay = { kind: 'actions', target, acts };
+    this.overlay = { kind: 'actions', target, acts: getActions(this.ctx, target) };
     this.render();
+  }
+
+  // ----- command catalog (CMDS) -----
+  openCatalog() { this.overlay = { kind: 'catalog', group: null }; this.render(); }
+
+  runCatalog(cmd) {
+    if (!hasCmd(this.profile, cmd)) { alert('Command terkunci. Beli di Pasar.'); return; }
+    const meta = CMD_META[cmd];
+    const k = meta.kind;
+    if (k === 'soon') { alert(`${cmd}: segera hadir di update berikutnya.`); return; }
+    if (k === 'map') { this.overlay = null; this.view = 'map'; this.render(); return; }
+    if (k === 'scan') { this.overlay = null; this.runCommand('SCAN', this.cur ? { type: 'device', id: this.cur } : { type: 'rig' }); return; }
+    if (k === 'disconnect') { if (!this.cur) return alert('Belum terhubung ke node.'); this.overlay = null; this.runCommand('DISCONNECT', { type: 'rig' }); return; }
+    if (k === 'files') { if (!this.cur) return alert('CONNECT ke node dulu.'); this.overlay = null; this.view = 'files'; this.render(); return; }
+    if (k === 'system') { if (!this.cur) return alert('CONNECT ke node dulu.'); this.overlay = null; this.view = 'system'; this.render(); return; }
+    if (k === 'search') {
+      if (!this.cur) return alert('CONNECT ke node dulu.');
+      this.overlay = null; this.view = 'terminal'; this.runCommand('SEARCH', { type: 'device', id: this.cur }); return;
+    }
+    // target-based: device / connect / file / proc / control
+    const targets = commandTargets(this.ctx, cmd);
+    if (!targets.length) { alert(this.cur ? `Tidak ada sasaran untuk ${cmd} di node ini.` : 'CONNECT ke node dulu.'); return; }
+    if (targets.length === 1 && targets[0].enabled) { this.runFromCatalog(cmd, targets[0].target); return; }
+    this.overlay = { kind: 'param', cmd, targets };
+    this.render();
+  }
+
+  runFromCatalog(cmd, target) {
+    const k = CMD_META[cmd]?.kind;
+    if (k === 'file') this.view = 'files';
+    else if (k === 'proc' || k === 'control') this.view = 'system';
+    this.overlay = null;
+    this.runCommand(cmd, target);
   }
 
   submitSite(endingId) {
@@ -115,13 +141,13 @@ export class App {
 
   doBuy(itemId) {
     const r = buy(this.profile, itemId);
-    if (r.ok) { this.persist(); buzz('light'); } else { alert(r.msg); }
+    if (r.ok) { this.persist(); buzz('light'); } else alert(r.msg);
     this.render();
   }
 
-  resetGame() { this.profile = newProfile(); clearProfile(); this.ctx = null; this.intro = true; this.render(); }
+  resetGame() { this.profile = newProfile(); clearProfile(); this.ctx = null; this.view = 'map'; this.intro = true; this.render(); }
 
-  // ---------- DOM helper ----------
+  // ---------- DOM ----------
   ic(name) { return this.h('span', { class: 'ic-svg', html: iconSvg(name) }); }
 
   h(tag, props = {}, ...kids) {
@@ -136,23 +162,18 @@ export class App {
     return e;
   }
 
-  // ---------- render root ----------
   render() {
     const el = this.h('div', { class: 'screen' });
     if (this.intro) { el.append(this.vIntro()); this.root.replaceChildren(el); return; }
     el.append(this.statusStrip());
-    const mapfull = this.scene === 'world' && this.worldTab === 'map';
-    const pane = this.h('div', { class: 'pane' + (this.curTab() === 'term' ? ' term' : '') + (mapfull ? ' mapfull' : '') });
-    pane.append(...this.currentPane());
+    const mapfull = this.view === 'map' && !this.ctx;
+    const pane = this.h('div', { class: 'pane' + (this.view === 'terminal' ? ' term' : '') + (mapfull ? ' mapfull' : '') });
+    pane.append(...this.viewPane());
     el.append(pane);
     if (this.showHint && this.ctx) el.append(this.h('div', { class: 'hint' }, '💡 ', hint(this.ctx)));
     el.append(this.dock());
     if (this.overlay) el.append(this.vOverlay());
     this.root.replaceChildren(el);
-  }
-
-  curTab() {
-    return this.scene === 'world' ? this.worldTab : this.scene === 'net' ? this.netTab : this.devTab;
   }
 
   // ---------- intro ----------
@@ -168,7 +189,7 @@ export class App {
   // ---------- status strip ----------
   statusStrip() {
     const h = this.h.bind(this);
-    if (this.scene === 'world') {
+    if (!this.ctx) {
       const rank = rankFor(this.profile.rep);
       return h('div', { class: 'statusbar' },
         h('span', { class: 'loc' }, '◉ ', CITY.name.toUpperCase()),
@@ -176,23 +197,24 @@ export class App {
         h('span', { class: 'cr' }, '◆ ', String(this.profile.credits)),
         h('span', { class: 'rk' }, rank.name));
     }
-    const site = this.ctx.mission;
-    if (this.scene === 'net') {
-      const node = nodeFor(site.id);
+    if (this.view === 'files' || this.view === 'system') {
+      const d = device(this.ctx.run, this.cur);
       return h('div', { class: 'statusbar' },
-        h('button', { class: 'back', title: 'Jack out', onclick: () => this.jackOut() }, this.ic('back')),
-        h('span', { class: 'loc' }, site.code, ' ', site.title),
+        h('button', { class: 'back', title: 'Kembali ke terminal', onclick: () => { this.view = 'terminal'; this.render(); } }, this.ic('back')),
+        h('span', { class: 'loc' }, d.name),
+        h('span', { class: 'addr' }, d.addr),
         h('span', { class: 'spacer' }),
-        h('span', { class: 'df' }, DIFF_LABEL[node?.difficulty || 1]),
+        h('span', { class: 'lv' }, LEVEL_LABEL[d.access]),
         this.hintBtn());
     }
-    const d = device(this.ctx.run, this.ctx.run.current);
+    const site = this.ctx.mission;
+    const node = nodeFor(site.id);
     return h('div', { class: 'statusbar' },
-      h('button', { class: 'back', onclick: () => this.runCommand('DISCONNECT', { type: 'rig' }) }, this.ic('back')),
-      h('span', { class: 'loc' }, d.name),
-      h('span', { class: 'addr' }, d.addr),
+      h('span', { class: 'loc' }, site.code, ' ', site.title),
+      this.cur && h('span', { class: 'lv' }, LEVEL_LABEL[device(this.ctx.run, this.cur).access]),
       h('span', { class: 'spacer' }),
-      h('span', { class: 'lv' }, LEVEL_LABEL[d.access]),
+      h('span', { class: 'df' }, DIFF_LABEL[node?.difficulty || 1]),
+      h('button', { class: 'jackoutbtn', title: 'Jack out', onclick: () => this.jackOut() }, this.ic('exit')),
       this.hintBtn());
   }
 
@@ -200,32 +222,36 @@ export class App {
     return this.h('button', { class: 'hintbtn' + (this.showHint ? ' on' : ''), onclick: () => { this.showHint = !this.showHint; this.render(); } }, this.ic('hint'));
   }
 
-  // ---------- panes ----------
-  currentPane() {
-    if (this.scene === 'world') {
-      if (this.worldTab === 'map') return this.paneWorld();
-      if (this.worldTab === 'jobs') return this.paneJobs();
-      if (this.worldTab === 'market') return this.paneMarket();
-      return this.paneProfile();
+  // ---------- view router ----------
+  viewPane() {
+    if (this.view === 'market') return this.paneMarket();
+    if (this.view === 'profile') return this.paneProfile();
+    if (!this.ctx) {
+      if (this.view === 'map') return this.paneWorld();
+      return this.emptyNeedJack();
     }
-    if (this.scene === 'net') {
-      if (this.netTab === 'obj') return this.paneObjectives();
-      if (this.netTab === 'term') return this.paneTerminal();
-      return this.paneNet();
-    }
-    if (this.devTab === 'files') return this.paneFiles();
-    if (this.devTab === 'sys') return this.paneSystem();
-    return this.paneTerminal();
+    if (this.view === 'map') return this.paneNet();
+    if (this.view === 'terminal') return this.paneTerminal();
+    if (this.view === 'goals') return this.paneObjectives();
+    if (this.view === 'files') return this.paneFiles();
+    if (this.view === 'system') return this.paneSystem();
+    return this.paneWorld();
   }
 
-  // ===== WORLD =====
+  emptyNeedJack() {
+    const h = this.h.bind(this);
+    return [h('div', { class: 'empty', style: 'margin-top:40px' },
+      'Belum ada operasi aktif.\nBuka tab Peta, pilih target, lalu JACK IN.'),
+      h('button', { class: 'jackin', style: 'max-width:260px;margin:14px auto 0;display:block', onclick: () => { this.view = 'map'; this.render(); } }, '▸ KE PETA')];
+  }
+
+  // ===== WORLD (city map) =====
   paneWorld() {
     const h = this.h.bind(this);
     const map = h('div', { class: 'worldmap' });
     for (const n of worldNodes(this.profile)) {
       const sel = this.selSite === n.id;
-      const cls = 'site-pin ' + n.state + (sel ? ' sel' : '');
-      map.append(h('button', { class: cls, style: `left:${n.x}%;top:${n.y}%`,
+      map.append(h('button', { class: 'site-pin ' + n.state + (sel ? ' sel' : ''), style: `left:${n.x}%;top:${n.y}%`,
         onclick: () => { if (n.state === 'locked') { alert('Sinyal lemah. Naikkan reputasi atau beli intel untuk membuka lokasi ini.'); return; } this.selSite = n.id; this.render(); } },
         h('span', { class: 'pin-dot' }, n.state === 'cleared' ? '✓' : n.state === 'locked' ? '?' : '◉'),
         h('span', { class: 'pin-nm' }, n.state === 'locked' ? '???' : n.site.title)));
@@ -244,22 +270,6 @@ export class App {
         h('button', { class: 'jackin', onclick: () => this.jackIn(n.id) }, '▸ JACK IN')));
     } else {
       out.push(h('div', { class: 'empty' }, 'Ketuk sebuah pin di peta untuk melihat targetnya.'));
-    }
-    return out;
-  }
-
-  paneJobs() {
-    const h = this.h.bind(this);
-    const out = [h('div', { class: 'section-h' }, 'Papan Job')];
-    for (const j of availableJobs(this.profile)) {
-      out.push(h('button', { class: 'card', onclick: () => { this.selSite = j.siteId; this.worldTab = 'map'; this.render(); } },
-        h('div', { class: 'code' }, j.code, ' · ', j.district, ' · ', DIFF_LABEL[j.difficulty]),
-        h('h3', {}, j.title),
-        h('div', { class: 'client' }, j.client),
-        h('p', {}, j.brief),
-        h('div', { class: 'foot' },
-          j.done && h('span', { class: 'badge' }, '✓ selesai'),
-          h('span', { class: 'reward' }, `+${j.reward} ◆ · +${j.repReward} rep`))));
     }
     return out;
   }
@@ -294,7 +304,7 @@ export class App {
       h('div', { class: 'stat-row' },
         h('div', { class: 'stat' }, h('b', {}, String(this.profile.credits)), h('small', {}, 'kredit')),
         h('div', { class: 'stat' }, h('b', {}, `${cleared}/${WORLD_NODES.length}`), h('small', {}, 'target selesai')),
-        h('div', { class: 'stat' }, h('b', {}, String(Object.values(this.profile.tools).filter(Boolean).length)), h('small', {}, 'tool dimiliki'))),
+        h('div', { class: 'stat' }, h('b', {}, String((this.profile.cmds || []).length)), h('small', {}, 'command'))),
       h('div', { class: 'section-h' }, 'Tool (otomatis siap dipakai)')
     ];
     for (const t of Object.values(TOOLS)) {
@@ -313,7 +323,7 @@ export class App {
     return out;
   }
 
-  // ===== NET =====
+  // ===== NET (network map while jacked in) =====
   paneNet() {
     const h = this.h.bind(this);
     const run = this.ctx.run;
@@ -333,7 +343,7 @@ export class App {
     for (const d of devs) {
       const cur = run.current === d.id;
       map.append(h('button', { class: 'node' + (cur ? ' cur' : '') + (d.online ? '' : ' off'), style: `left:${d.x}%;top:${d.y}%`,
-        onclick: () => this.tapObject({ type: 'device', id: d.id }) },
+        onclick: () => cur ? (this.view = 'files', this.render()) : this.tapObject({ type: 'device', id: d.id }) },
         h('div', { class: 'nm' }, this.ic(d.kind), d.name),
         h('div', { class: 'ad' }, d.addr),
         h('div', { class: 'st ' + (d.access !== 'none' ? 'a' : d.online && !d.statusText ? '' : 'o') },
@@ -345,13 +355,13 @@ export class App {
       h('div', { class: 'tag-r', style: 'color:var(--green)' }, 'SCAN'));
     const out = [rigCard, map];
     if (!devs.length) out.push(h('div', { class: 'empty' }, 'Belum ada perangkat.\nKetuk kartu "Rig lokal" lalu SCAN.'));
-    out.push(h('div', { class: 'section-h' }, 'Perangkat ditemukan'));
+    out.push(h('div', { class: 'section-h' }, 'Perangkat'));
     for (const d of devs) {
       const cur = run.current === d.id;
-      out.push(h('button', { class: 'obj', onclick: () => this.tapObject({ type: 'device', id: d.id }) },
+      out.push(h('button', { class: 'obj', onclick: () => cur ? (this.view = 'files', this.render()) : this.tapObject({ type: 'device', id: d.id }) },
         h('div', { class: 'ic' }, this.ic(d.kind)),
         h('div', { class: 'main' }, h('b', {}, d.name), h('small', {}, `${d.kind} · ${d.addr}`)),
-        h('div', { class: 'tag-r' }, cur ? 'TERHUBUNG' : d.access !== 'none' ? LEVEL_LABEL[d.access] : '')));
+        h('div', { class: 'tag-r' }, cur ? 'TERHUBUNG ▸' : d.access !== 'none' ? LEVEL_LABEL[d.access] : '')));
     }
     return out;
   }
@@ -382,24 +392,22 @@ export class App {
     return out;
   }
 
-  // ===== DEVICE =====
+  // ===== DEVICE pages =====
   deviceHeader() {
     const h = this.h.bind(this);
-    const d = device(this.ctx.run, this.ctx.run.current);
-    const acts = getActions(this.ctx, { type: 'device', id: d.id }).filter((a) => a.cmd !== 'CONNECT');
-    const extra = acts.filter((a) => !['INSPECT'].includes(a.cmd)).map((a) => a.cmd);
+    const d = device(this.ctx.run, this.cur);
+    const acts = getActions(this.ctx, { type: 'device', id: d.id }).filter((a) => a.cmd !== 'CONNECT' && a.cmd !== 'INSPECT');
     return h('button', { class: 'devhead', onclick: () => this.tapObject({ type: 'device', id: d.id }) },
       h('div', { class: 'ic' }, this.ic(d.kind)),
-      h('div', { class: 'main' },
-        h('b', {}, d.name),
-        h('small', {}, extra.length ? 'perintah: ' + extra.join(' · ') : 'INSPECT perangkat')),
+      h('div', { class: 'main' }, h('b', {}, d.name),
+        h('small', {}, acts.length ? 'perintah: ' + acts.map((a) => a.cmd).join(' · ') : 'ketuk untuk INSPECT')),
       h('div', { class: 'tag-r', style: 'color:var(--green)' }, LEVEL_LABEL[d.access]));
   }
 
   paneFiles() {
     const h = this.h.bind(this);
     const run = this.ctx.run;
-    const d = device(run, run.current);
+    const d = device(run, this.cur);
     const files = visibleFiles(run, d.id);
     const out = [this.deviceHeader(), h('div', { class: 'section-h' }, `File · ${LEVEL_LABEL[d.access]}`)];
     if (!files.length) out.push(h('div', { class: 'empty' }, 'Tidak ada file yang bisa diakses pada level ini.'));
@@ -424,9 +432,8 @@ export class App {
 
   paneSystem() {
     const h = this.h.bind(this);
-    const d = device(this.ctx.run, this.ctx.run.current);
-    const out = [this.deviceHeader()];
-    out.push(h('div', { class: 'section-h' }, 'Proses & Layanan'));
+    const d = device(this.ctx.run, this.cur);
+    const out = [this.deviceHeader(), h('div', { class: 'section-h' }, 'Proses & Layanan')];
     if (!d.procs?.length) out.push(h('div', { class: 'empty' }, 'Tidak ada proses pada perangkat ini.'));
     for (const p of d.procs || []) {
       out.push(h('button', { class: 'obj', onclick: () => this.tapObject({ type: 'proc', device: d.id, id: p.id }) },
@@ -445,52 +452,26 @@ export class App {
     return out;
   }
 
-  // Terminal tab: live log + tappable command chips (Null Byte style).
+  // Terminal: log + big CMDS button opening the command catalog.
   paneTerminal() {
     const h = this.h.bind(this);
     const log = h('div', { class: 'log' });
     for (const e of this.ctx.run.log) log.append(h('div', { class: 'entry ' + e.t }, e.text));
     setTimeout(() => { if (log.isConnected) log.scrollTop = log.scrollHeight; }, 0);
-
-    // Command chips for the current context: the connected device's own
-    // commands when inside a node, or the rig's SCAN when still on the net.
-    const target = this.ctx.run.current ? { type: 'device', id: this.ctx.run.current } : { type: 'rig' };
-    const acts = getActions(this.ctx, target);
-    const chips = h('div', { class: 'termchips' });
-    for (const a of acts) {
-      chips.append(h('button', { class: 'termchip' + (a.enabled ? '' : ' off'), title: a.reason,
-        onclick: () => a.enabled ? this.runCommand(a.cmd, target) : alert(a.reason) }, a.cmd));
-    }
-    const hintRow = h('div', { class: 'term-hint' },
-      this.ctx.run.current ? 'Perintah di atas untuk node ini · buka tab File / Sistem untuk aksi per-objek'
-        : 'Pilih perangkat di tab Node untuk CONNECT');
-    return [log, chips, hintRow];
+    const bar = h('div', { class: 'termbar' },
+      h('button', { class: 'cmds-btn', onclick: () => this.openCatalog() }, this.ic('terminal'), ' CMDS'),
+      h('div', { class: 'term-ctx' }, this.cur ? `node: ${device(this.ctx.run, this.cur).name}` : 'belum terhubung'));
+    return [log, bar];
   }
 
-  // ---------- dock (flat tab bar) ----------
+  // ---------- dock ----------
   dock() {
     const h = this.h.bind(this);
-    // _exit* entries are actions, not tabs.
-    const tabs = this.scene === 'world'
-      ? [['map', '🗺️', 'Peta'], ['jobs', '📡', 'Job'], ['market', '🛒', 'Pasar'], ['profile', '👤', 'Profil']]
-      : this.scene === 'net'
-        ? [['net', '🌐', 'Node'], ['term', '📟', 'Terminal'], ['obj', '🎯', 'Misi'], ['_exitMission', '⏏', 'Keluar']]
-        : [['term', '📟', 'Terminal'], ['files', '📁', 'File'], ['sys', '⚙️', 'Sistem'], ['_exitNode', '⏏', 'Keluar']];
-    const active = this.curTab();
-    const onTab = (id) => {
-      if (id === '_exitNode') { this.runCommand('DISCONNECT', { type: 'rig' }); return; }
-      if (id === '_exitMission') { this.jackOut(); return; }
-      if (this.scene === 'world') this.worldTab = id;
-      else if (this.scene === 'net') this.netTab = id;
-      else this.devTab = id;
-      this.render();
-    };
+    const active = (this.view === 'files' || this.view === 'system') ? 'terminal' : this.view;
     const row = h('div', { class: 'dock' });
-    for (const [id, , label] of tabs) {
-      const exit = id.startsWith('_exit');
-      row.append(h('button', { class: 'dock-btn' + (id === active ? ' on' : '') + (exit ? ' exit' : ''), onclick: () => onTab(id) },
-        h('span', { class: 'di' }, this.ic(TAB_ICON[id] || 'node')), h('span', { class: 'dl' }, label)));
-    }
+    for (const [id, label] of TABS)
+      row.append(h('button', { class: 'dock-btn' + (id === active ? ' on' : ''), onclick: () => { this.view = id; this.overlay = null; this.render(); } },
+        h('span', { class: 'di' }, this.ic(TAB_ICON[id])), h('span', { class: 'dl' }, label)));
     return row;
   }
 
@@ -523,6 +504,29 @@ export class App {
           h('b', {}, a.cmd), a.enabled ? h('span', {}, '▸') : h('small', { class: 'reason' }, a.reason)));
       }
       sheet.append(h('button', { class: 'act dim', onclick: close }, 'TUTUP'));
+    } else if (o.kind === 'catalog') {
+      sheet.append(h('h2', {}, 'Command'));
+      for (const g of GROUPS) {
+        sheet.append(h('div', { class: 'cat-group' }, g.name));
+        const grid = h('div', { class: 'cat-grid' });
+        for (const cmd of groupCommands(g.id)) {
+          const locked = !hasCmd(this.profile, cmd);
+          grid.append(h('button', { class: 'cat-cmd' + (locked ? ' locked' : ''), title: CMD_META[cmd].desc,
+            onclick: () => { if (locked) { alert('Terkunci. Beli di Pasar.'); return; } this.runCatalog(cmd); } },
+            h('b', {}, cmd),
+            locked ? h('span', { class: 'cat-lock' }, this.ic('lock')) : h('small', {}, CMD_META[cmd].desc)));
+        }
+        sheet.append(grid);
+      }
+      sheet.append(h('button', { class: 'act dim', onclick: close }, 'TUTUP'));
+    } else if (o.kind === 'param') {
+      sheet.append(h('h2', {}, o.cmd), h('p', { style: 'color:var(--muted);font-size:12px;margin:0 0 10px' }, 'Pilih sasaran:'));
+      for (const t of o.targets) {
+        sheet.append(h('button', { class: 'cmd-row' + (t.enabled ? '' : ' off'),
+          onclick: () => { if (!t.enabled) return; this.runFromCatalog(o.cmd, t.target); } },
+          h('b', {}, t.label), t.enabled ? h('span', {}, '▸') : h('small', { class: 'reason' }, t.reason)));
+      }
+      sheet.append(h('button', { class: 'act dim', onclick: close }, 'BATAL'));
     } else if (o.kind === 'choose') {
       sheet.append(h('h2', {}, o.cmd));
       if (o.cmd === 'CONFIG') {
