@@ -9,6 +9,7 @@ import { MARKET, buy, canBuy, owned } from '../game/market.js';
 import { HINT_COST } from '../game/profile.js';
 import { focusCostFor, loadingMult, spendFocus, sleep, focusState, FOCUS_LABEL, seasonName } from '../game/time.js';
 import { perksFor } from '../game/perks.js';
+import { canContract, startContract, hasContract, pendingDays, payout, collect } from '../game/retainer.js';
 import { rankFor, nextRank, rankProgress } from '../game/progression.js';
 import { saveProfile, loadProfile, clearProfile, buzz } from '../platform/storage.js';
 import { iconSvg } from './icons.js';
@@ -142,6 +143,35 @@ export class App {
     setTimeout(() => { this.busy = null; fn(); }, ms);
   }
 
+  // Safehouse list: offers for cleared sites + today's chore for active contracts.
+  contractRows() {
+    const h = this.h.bind(this);
+    const rows = [];
+    for (const n of WORLD_NODES) {
+      const site = siteById(n.id);
+      if (canContract(this.profile, n.id)) {
+        rows.push(h('div', { class: 'job' },
+          h('b', {}, site.title), h('p', { style: 'color:var(--muted);font-size:12px;margin:4px 0 8px' }, 'Klien menawarkan kontrak perawatan harian.'),
+          h('button', { class: 'jackin', style: 'width:auto;padding:8px 16px', onclick: () => this.takeContract(n.id) }, 'AMBIL KONTRAK')));
+      } else if (hasContract(this.profile, n.id)) {
+        const days = pendingDays(this.profile, n.id);
+        const dev = site.world.devices[site.entry[0]];
+        rows.push(h('div', { class: 'job' + (days ? '' : ' off') },
+          h('b', {}, `Kontrak · ${site.title}`),
+          h('p', { style: 'color:var(--muted);font-size:12px;margin:4px 0 0' },
+            days ? `Tugas: sambung ke ${dev.name} lalu buka File Server. Imbalan ◆${payout(this.profile, n.id, site, perksFor(this.profile))}${days > 1 ? ` (${days} hari menumpuk)` : ''}.`
+                 : '✓ Beres hari ini. Lanjut lagi besok.')));
+      }
+    }
+    return rows.length ? [h('div', { class: 'section-h' }, 'Kontrak'), ...rows] : [];
+  }
+
+  dueNotes() {
+    const h = this.h.bind(this);
+    return WORLD_NODES.filter((n) => hasContract(this.profile, n.id) && pendingDays(this.profile, n.id) > 0)
+      .map((n) => h('p', { style: 'color:var(--ink);font-size:13px;margin:6px 0' }, `📄 Kontrak ${siteById(n.id).title} menunggu: ◆${payout(this.profile, n.id, siteById(n.id), perksFor(this.profile))}`));
+  }
+
   goSleep() {
     this.overlay = null;
     this.withLoading('TIDUR', () => {
@@ -152,9 +182,31 @@ export class App {
     }, { cost: 0, ms: 1500 });
   }
 
+  // Opening the file server on a contracted site's entry node is the daily chore.
+  collectRetainer() {
+    const site = this.ctx?.mission;
+    if (!site || !hasContract(this.profile, site.id) || this.cur !== site.entry[0]) return null;
+    const got = collect(this.profile, site.id, site, perksFor(this.profile));
+    if (!got) return null;
+    this.persist();
+    return { ...got, title: site.title };
+  }
+
+  takeContract(siteId) {
+    if (!startContract(this.profile, siteId)) return;
+    this.persist();
+    this.render();
+    this.toast(`Kontrak perawatan ${siteById(siteId).title} diambil. Buka file server node awalnya tiap hari.`, 'doc');
+  }
+
   // Entering the file / service server runs LS / PS behind the loading screen.
   openPage(view, label) {
-    this.withLoading(label, () => { this.view = view; this.render(); });
+    this.withLoading(label, () => {
+      this.view = view;
+      const got = view === 'files' ? this.collectRetainer() : null;
+      this.render();
+      if (got) this.toast(`Kontrak ${got.title}: +◆${got.credits}${got.days > 1 ? ` (${got.days} hari)` : ''}`, 'doc');
+    });
   }
 
   // ---------- commands ----------
@@ -454,11 +506,12 @@ export class App {
       if (!cleared) for (const id of n.site.entry) { const e = run.devices[id]; if (e?.discovered) line(mpos, dpos(e), true); }
       for (const d of devs) {
         const cur = run.current === d.id, p = dpos(d);
+        const due = d.id === n.site.entry[0] && hasContract(this.profile, n.id) && pendingDays(this.profile, n.id) > 0;
         cards.push(this.nodeCardPx({
           cls: (cleared ? 'm-done' : 'm-active') + (cur ? ' cur' : '') + (d.online ? '' : ' off'),
           cx: p.x, cy: p.y, icon: d.kind, title: d.name, sub: d.addr,
-          st: d.access !== 'none' ? LEVEL_LABEL[d.access] : !d.online ? 'OFFLINE' : d.statusText || 'TERLIHAT',
-          stCls: d.access !== 'none' ? 'a' : d.online && !d.statusText ? '' : 'o',
+          st: due ? `RUTIN ◆${payout(this.profile, n.id, n.site, perksFor(this.profile))}` : d.access !== 'none' ? LEVEL_LABEL[d.access] : !d.online ? 'OFFLINE' : d.statusText || 'TERLIHAT',
+          stCls: due ? 'due' : d.access !== 'none' ? 'a' : d.online && !d.statusText ? '' : 'o',
           onclick: () => { this.focus(n.id); this.tapObject({ type: 'device', id: d.id }); }
         }));
       }
@@ -763,6 +816,7 @@ export class App {
           h('div', { class: 'focus-top' }, h('b', {}, `Fokus ${this.profile.focus}`), h('span', { class: 'fo ' + focusState(this.profile.focus) }, FOCUS_LABEL[focusState(this.profile.focus)])),
           h('div', { class: 'rankbar' }, h('i', { style: `width:${Math.min(100, this.profile.focus)}%` })),
           h('small', {}, 'Makin lelah, aksi makin mahal dan loading makin lama. Tidur memulihkan Fokus.')),
+        ...this.contractRows(),
         h('button', { class: 'jackin', onclick: () => this.goSleep() }, '▸ TIDUR · hari berikutnya'),
         h('button', { class: 'act dim', onclick: close }, 'TUTUP'));
     } else if (o.kind === 'daystart') {
@@ -770,6 +824,7 @@ export class App {
       sheet.append(h('h2', {}, `Hari ${i.day}`),
         h('p', { style: 'color:var(--muted);font-size:13px;margin:4px 0 10px' }, `Musim ${i.season} · Fokus pulih penuh`),
         i.event && h('div', { class: 'event-chip' }, h('b', {}, i.event.name), h('small', {}, i.event.desc)),
+        ...this.dueNotes(),
         h('button', { class: 'act', onclick: close }, 'MULAI HARI'));
     } else if (o.kind === 'confirm') {
       sheet.append(h('h2', {}, o.title), h('p', { style: 'color:var(--muted);font-size:13px;margin:6px 0 12px' }, o.text),
@@ -841,6 +896,7 @@ export class App {
         h('div', { class: 'file' }, o.res.text),
         h('p', { style: 'color:var(--amber)' }, `+${o.res.reward} ◆   ·   +${o.res.rep} rep`),
         o.res.unlocked.length && h('p', { style: 'color:var(--cyan)' }, 'Tool terbuka: ' + o.res.unlocked.map((t) => TOOLS[t].name).join(', ')),
+        h('p', { style: 'color:var(--muted);font-size:12px' }, 'Klien menawarkan kontrak perawatan harian — cek di Safehouse.'),
         h('button', { class: 'act', onclick: close }, 'LANJUT'));
     }
     return h('div', { class: 'overlay', onclick: close }, sheet);

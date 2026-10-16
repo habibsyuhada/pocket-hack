@@ -427,3 +427,4 @@ button:active:not(:disabled):not(.node):not(.site-pin) { transform: scale(0.97);
 .focus-box small { display: block; margin-top: 8px; color: var(--muted); font-size: 11px; }
 .node.safehouse .nm .ic-svg { color: var(--amber); }
 .node.safehouse { border-color: rgba(240,194,74,0.5); }
+.node .st.due { color: var(--amber); }
