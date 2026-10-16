@@ -406,7 +406,7 @@ export class App {
       if (!center && !locked && !cleared) center = acc ? base : mpos;
       if (this._centerOn === n.id) center = base;
       // one node = one mission: the mission node sits at the heart of its site
-      cards.push(this.nodeCardPx({
+      if (!cleared) cards.push(this.nodeCardPx({
         cls: 'node-target' + (locked ? ' off' : '') + (cleared ? ' done' : '') + (acc && !cleared ? ' live' : ''),
         cx: mpos.x, cy: mpos.y, icon: 'target',
         title: locked ? '???' : n.site.title,
@@ -424,11 +424,11 @@ export class App {
       const dpos = (d) => ({ x: base.x + ((d.x - 50) / 100) * CLUSTER, y: base.y + ((d.y - 50) / 100) * CLUSTER });
       const devs = Object.values(run.devices).filter((d) => d.discovered);
       for (const d of devs) for (const l of d.links || []) { const t = run.devices[l]; if (t?.discovered) line(dpos(d), dpos(t)); }
-      for (const id of n.site.entry) { const e = run.devices[id]; if (e?.discovered) line(mpos, dpos(e), true); }
+      if (!cleared) for (const id of n.site.entry) { const e = run.devices[id]; if (e?.discovered) line(mpos, dpos(e), true); }
       for (const d of devs) {
         const cur = run.current === d.id, p = dpos(d);
         cards.push(this.nodeCardPx({
-          cls: (cur ? 'cur' : '') + (d.online ? '' : ' off'),
+          cls: (cleared ? 'm-done' : 'm-active') + (cur ? ' cur' : '') + (d.online ? '' : ' off'),
           cx: p.x, cy: p.y, icon: d.kind, title: d.name, sub: d.addr,
           st: d.access !== 'none' ? LEVEL_LABEL[d.access] : !d.online ? 'OFFLINE' : d.statusText || 'TERLIHAT',
           stCls: d.access !== 'none' ? 'a' : d.online && !d.statusText ? '' : 'o',

@@ -401,3 +401,10 @@ button:active:not(:disabled):not(.node):not(.site-pin) { transform: scale(0.97);
 .sheet .act.danger { border-color: var(--red); color: var(--red); }
 .hintbtn { position: relative; }
 .hint-cost { position: absolute; right: -6px; bottom: -7px; padding: 0 4px; border-radius: 6px; background: var(--bg-panel); border: 1px solid var(--amber); font-size: 9px; font-weight: 700; line-height: 14px; color: var(--amber); }
+
+/* device nodes: active mission vs finished mission */
+.node.m-active { border-color: var(--green-dim); box-shadow: 0 0 0 3px var(--green-ghost), 0 4px 12px rgba(0,0,0,0.3); }
+.node.m-done { opacity: 0.5; filter: saturate(0.4); border-color: var(--line); }
+.node.m-done .nm .ic-svg { color: var(--muted); }
+.node.m-done.cur { opacity: 0.85; }
+.node.m-active.cur { border-color: var(--green); box-shadow: 0 0 0 3px var(--green-ghost), var(--glow-sm); }
