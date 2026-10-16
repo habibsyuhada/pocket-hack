@@ -3,21 +3,24 @@ import { newProfile, newRun, TOOLS, LEVEL_LABEL, atLeast, device, visibleFiles }
 import { getActions, getChoices, exec, objectives, hint, endings, finish, LOCAL_CAP } from '../engine/actions.js';
 import { CMD_META, GROUPS, groupCommands, commandTargets } from '../engine/commands.js';
 import { hasCmd } from '../game/profile.js';
-import { CITY, WORLD_NODES, DIFF_LABEL, nodeFor, worldNodes, nodeState } from '../game/world.js';
+import { CITY, WORLD_NODES, DIFF_LABEL, nodeFor, worldNodes } from '../game/world.js';
 import { MARKET, buy, canBuy, owned } from '../game/market.js';
 import { rankFor, nextRank, rankProgress } from '../game/progression.js';
 import { saveProfile, loadProfile, clearProfile, buzz } from '../platform/storage.js';
 import { iconSvg } from './icons.js';
 
 const TAB_ICON = { map: 'map', terminal: 'terminal', goals: 'target', market: 'market', profile: 'profile' };
-const MAPW = 900, MAPH = 1400, CLUSTER = 440; // big map canvas (px) + node cluster spread
+const MAPW = 1500, MAPH = 2000, CLUSTER = 420; // big open-world canvas (px) + per-site node cluster spread
+const MIN_SCALE = 0.25, MAX_SCALE = 1.8;
 const TABS = [['map', 'Peta'], ['terminal', 'Terminal'], ['goals', 'Goals'], ['market', 'Pasar'], ['profile', 'Profil']];
 
 export class App {
   constructor(root) {
     this.root = root;
     this.profile = newProfile();
-    this.ctx = null;                 // active target run, or null when roaming
+    this.runs = {};                  // siteId -> ctx; every site is live on the map, no jack-in
+    this.ctx = null;                 // ctx of the site whose node was touched last
+    this.goalSite = null;            // mission shown in the Goals tab
     this.view = 'map';               // map | terminal | goals | market | profile | files | system
     this.sel = { type: 'rig' };
     this.selSite = null;
@@ -38,29 +41,23 @@ export class App {
   persist() { saveProfile(this.profile); }
   get cur() { return this.ctx?.run.current || null; }
 
-  // ---------- transitions ----------
-  jackIn(siteId) {
-    const site = siteById(siteId);
-    if (!site) return;
-    this.profile.discovered[siteId] = true;
-    this.ctx = { mission: site, run: newRun(site), profile: this.profile };
-    this.mapView = null;
-    for (const id of site.entry) { const d = this.ctx.run.devices[id]; if (d) d.discovered = true; }
-    this.view = 'map';
-    this.sel = { type: 'rig' };
-    this.showHint = false;
-    this.overlay = null;
-    buzz('heavy');
-    this.render();
+  // ---------- sites ----------
+  // Every site is live on the open-world map; its run is created lazily the
+  // first time one of its nodes is touched (or its mission is opened).
+  ctxFor(siteId) {
+    if (!this.runs[siteId]) {
+      const site = siteById(siteId);
+      const ctx = { mission: site, run: newRun(site), profile: this.profile };
+      for (const id of site.entry) { const d = ctx.run.devices[id]; if (d) d.discovered = true; }
+      this.runs[siteId] = ctx;
+    }
+    return this.runs[siteId];
   }
 
-  jackOut() {
-    this.ctx = null;
-    this.mapView = null;
-    this.view = 'map';
-    this.overlay = null;
-    this.persist();
-    this.render();
+  focus(siteId) {
+    this.ctx = this.ctxFor(siteId);
+    this.profile.discovered[siteId] = true;
+    this.goalSite = siteId;
   }
 
   // ---------- commands ----------
@@ -111,7 +108,8 @@ export class App {
     const k = meta.kind;
     if (k === 'soon') { alert(`${cmd}: segera hadir di update berikutnya.`); return; }
     if (k === 'map') { this.overlay = null; this.view = 'map'; this.render(); return; }
-    if (k === 'scan') { this.overlay = null; this.runCommand('SCAN', this.cur ? { type: 'device', id: this.cur } : { type: 'rig' }); return; }
+    if (!this.ctx) { alert('Pilih node di peta dulu.'); return; }
+    if (k === 'scan') { if (!this.ctx) return alert('Pilih node di peta dulu.'); this.overlay = null; this.runCommand('SCAN', this.cur ? { type: 'device', id: this.cur } : { type: 'rig' }); return; }
     if (k === 'disconnect') { if (!this.cur) return alert('Belum terhubung ke node.'); this.overlay = null; this.runCommand('DISCONNECT', { type: 'rig' }); return; }
     if (k === 'files') { if (!this.cur) return alert('CONNECT ke node dulu.'); this.overlay = null; this.view = 'files'; this.render(); return; }
     if (k === 'system') { if (!this.cur) return alert('CONNECT ke node dulu.'); this.overlay = null; this.view = 'system'; this.render(); return; }
@@ -135,9 +133,9 @@ export class App {
     this.runCommand(cmd, target);
   }
 
-  submitSite(endingId) {
-    const node = nodeFor(this.ctx.mission.id);
-    const res = finish(this.ctx, endingId, { repReward: node?.repReward || 0 });
+  submitSite(ctx, endingId) {
+    const node = nodeFor(ctx.mission.id);
+    const res = finish(ctx, endingId, { repReward: node?.repReward || 0 });
     this.persist();
     this.overlay = { kind: 'result', res };
     buzz('heavy');
@@ -150,7 +148,7 @@ export class App {
     this.render();
   }
 
-  resetGame() { this.profile = newProfile(); clearProfile(); this.ctx = null; this.view = 'map'; this.intro = true; this.render(); }
+  resetGame() { this.profile = newProfile(); clearProfile(); this.runs = {}; this.ctx = null; this.goalSite = null; this.mapView = null; this.view = 'map'; this.intro = true; this.render(); }
 
   // ---------- DOM ----------
   ic(name) { return this.h('span', { class: 'ic-svg', html: iconSvg(name) }); }
@@ -195,7 +193,7 @@ export class App {
   // ---------- status strip ----------
   statusStrip() {
     const h = this.h.bind(this);
-    if (!this.ctx) {
+    if (!this.ctx || this.view === 'map' || this.view === 'market' || this.view === 'profile') {
       const rank = rankFor(this.profile.rep);
       return h('div', { class: 'statusbar' },
         h('span', { class: 'loc' }, '◉ ', CITY.name.toUpperCase()),
@@ -220,7 +218,6 @@ export class App {
       this.cur && h('span', { class: 'lv' }, LEVEL_LABEL[device(this.ctx.run, this.cur).access]),
       h('span', { class: 'spacer' }),
       h('span', { class: 'df' }, DIFF_LABEL[node?.difficulty || 1]),
-      h('button', { class: 'jackoutbtn', title: 'Jack out', onclick: () => this.jackOut() }, this.ic('exit')),
       this.hintBtn());
   }
 
@@ -244,7 +241,7 @@ export class App {
   emptyNeedJack() {
     const h = this.h.bind(this);
     return [h('div', { class: 'empty', style: 'margin-top:40px' },
-      'Belum ada operasi aktif.\nBuka tab Peta, pilih target, lalu JACK IN.'),
+      'Belum ada node dipilih.\nBuka tab Peta lalu ketuk sebuah node.'),
       h('button', { class: 'jackin', style: 'max-width:260px;margin:14px auto 0;display:block', onclick: () => { this.view = 'map'; this.render(); } }, '▸ KE PETA')];
   }
 
@@ -259,84 +256,56 @@ export class App {
       st && h('div', { class: 'st ' + (stCls || '') }, st));
   }
 
-  // One big pannable/zoomable canvas showing every target AND, for the active
-  // target, its network nodes clustered around it — all on the same map.
+  // One big pannable/zoomable open-world canvas. Every site's nodes live on it
+  // at once — no jack-in. Missions are tracked in Goals, independent of the map.
   paneMap() {
     const h = this.h.bind(this);
     const inner = h('div', { class: 'map-inner', style: `width:${MAPW}px;height:${MAPH}px` });
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('class', 'edge'); svg.setAttribute('width', MAPW); svg.setAttribute('height', MAPH);
-    const line = (a, b, dashed) => {
+    const line = (a, b) => {
       const ln = document.createElementNS('http://www.w3.org/2000/svg', 'line');
       ln.setAttribute('x1', a.x); ln.setAttribute('y1', a.y); ln.setAttribute('x2', b.x); ln.setAttribute('y2', b.y);
-      if (dashed) ln.setAttribute('stroke-dasharray', '4 6');
       svg.append(ln);
     };
     inner.append(svg);
 
-    const targets = worldNodes(this.profile);
-    const tpos = {};
-    for (const n of targets) tpos[n.id] = { x: (n.x / 100) * MAPW, y: (n.y / 100) * MAPH };
-    const xs = targets.map((n) => tpos[n.id].x), ys = targets.map((n) => tpos[n.id].y), pad = 90;
-    this._mapBounds = { x: Math.min(...xs) - pad, y: Math.min(...ys) - pad, w: Math.max(...xs) - Math.min(...xs) + pad * 2, h: Math.max(...ys) - Math.min(...ys) + pad * 2 };
-
-    // active target's nodes clustered around its pin
-    let dpos = null, rigPos = null, active = null;
-    if (this.ctx) {
-      active = this.ctx.mission;
-      const base = tpos[active.id] || { x: MAPW / 2, y: MAPH / 2 };
-      const run = this.ctx.run;
-      dpos = (d) => ({ x: base.x + ((d.x - 50) / 100) * CLUSTER, y: base.y + ((d.y - 50) / 100) * CLUSTER });
-      rigPos = { x: base.x, y: base.y + CLUSTER * 0.66 };
+    const sites = worldNodes(this.profile);
+    const tags = [], cards = [];
+    let center = null;
+    for (const n of sites) {
+      const base = { x: (n.x / 100) * MAPW, y: (n.y / 100) * MAPH };
+      if (!center && n.state !== 'locked' && n.state !== 'cleared') center = base;
+      if (n.state === 'locked') {
+        cards.push(this.nodeCardPx({ cls: 'off', cx: base.x, cy: base.y, icon: 'target', title: '???', sub: 'sinyal lemah', st: 'TERKUNCI',
+          onclick: () => alert('Sinyal lemah. Naikkan reputasi atau beli intel untuk membuka lokasi ini.') }));
+        continue;
+      }
+      const ctx = this.ctxFor(n.id), run = ctx.run;
+      const dpos = (d) => ({ x: base.x + ((d.x - 50) / 100) * CLUSTER, y: base.y + ((d.y - 50) / 100) * CLUSTER });
       const devs = Object.values(run.devices).filter((d) => d.discovered);
       for (const d of devs) for (const l of d.links || []) { const t = run.devices[l]; if (t?.discovered) line(dpos(d), dpos(t)); }
-      for (const id of active.entry) { const d = run.devices[id]; if (d?.discovered) { line(base, dpos(d), true); line(rigPos, dpos(d), true); } }
-      this._mapCenter = base;
-    } else {
-      this._mapCenter = { x: MAPW / 2, y: MAPH * 0.55 };
-    }
-
-    // target cards (always)
-    for (const n of targets) {
-      const locked = n.state === 'locked', cleared = n.state === 'cleared', isActive = active && n.id === active.id;
-      inner.append(this.nodeCardPx({
-        cls: 'node-target' + (locked ? ' off' : '') + (cleared ? ' done' : '') + (isActive ? ' live' : ''),
-        cx: tpos[n.id].x, cy: tpos[n.id].y, icon: 'target',
-        title: locked ? '???' : n.site.title,
-        sub: locked ? 'sinyal lemah' : n.district,
-        st: isActive ? 'AKTIF' : locked ? 'TERKUNCI' : cleared ? 'SELESAI' : DIFF_LABEL[n.difficulty],
-        stCls: (isActive || cleared) ? 'a' : '',
-        onclick: () => {
-          if (locked) { alert('Sinyal lemah. Naikkan reputasi atau beli intel untuk membuka lokasi ini.'); return; }
-          if (isActive) { this.view = 'goals'; this.render(); return; }
-          this.overlay = { kind: 'site', id: n.id }; this.render();
-        }
-      }));
-    }
-
-    // active target's device nodes + rig
-    if (this.ctx) {
-      const run = this.ctx.run;
-      for (const d of Object.values(run.devices).filter((x) => x.discovered)) {
-        const cur = run.current === d.id;
-        const p = dpos(d);
-        inner.append(this.nodeCardPx({
+      tags.push(h('div', { class: 'site-tag' + (n.state === 'cleared' ? ' done' : ''), style: `left:${base.x}px;top:${base.y - CLUSTER * 0.3 - 58}px` },
+        `${n.site.code} · ${n.district}`));
+      for (const d of devs) {
+        const cur = run.current === d.id, p = dpos(d);
+        cards.push(this.nodeCardPx({
           cls: (cur ? 'cur' : '') + (d.online ? '' : ' off'),
           cx: p.x, cy: p.y, icon: d.kind, title: d.name, sub: d.addr,
           st: d.access !== 'none' ? LEVEL_LABEL[d.access] : !d.online ? 'OFFLINE' : d.statusText || 'TERLIHAT',
           stCls: d.access !== 'none' ? 'a' : d.online && !d.statusText ? '' : 'o',
-          onclick: () => cur ? (this.view = 'files', this.render()) : this.tapObject({ type: 'device', id: d.id })
+          onclick: () => { this.focus(n.id); if (cur) { this.view = 'files'; this.render(); } else this.tapObject({ type: 'device', id: d.id }); }
         }));
       }
-      inner.append(this.nodeCardPx({ cls: 'rig-node', cx: rigPos.x, cy: rigPos.y, icon: 'rig', title: 'RIG', sub: 'ketuk: SCAN',
-        onclick: () => this.tapObject({ type: 'rig' }) }));
     }
+    inner.append(...tags, ...cards);
+    this._mapCenter = center || { x: MAPW * 0.3, y: MAPH * 0.68 };
 
     const vp = h('div', { class: 'worldmap pan' }, inner,
       h('div', { class: 'zoom-btns' },
         h('button', { class: 'zoom-btn', onclick: () => this.zoomBy(1.25) }, '+'),
         h('button', { class: 'zoom-btn', onclick: () => this.zoomBy(0.8) }, '−')),
-      h('div', { class: 'map-tag' }, this.ctx ? `${this.ctx.mission.code} · ${this.ctx.mission.title}` : `◉ ${CITY.name}`));
+      h('div', { class: 'map-tag' }, `◉ ${CITY.name}`));
     return [vp];
   }
 
@@ -349,7 +318,7 @@ export class App {
     const r = vp.getBoundingClientRect();
     const mx = r.width / 2, my = r.height / 2;
     const wx = (mx - this.mapView.x) / this.mapView.scale, wy = (my - this.mapView.y) / this.mapView.scale;
-    this.mapView.scale = Math.max(0.45, Math.min(1.8, this.mapView.scale * f));
+    this.mapView.scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, this.mapView.scale * f));
     this.mapView.x = mx - wx * this.mapView.scale; this.mapView.y = my - wy * this.mapView.scale;
     this.applyMapT(vp.querySelector('.map-inner'));
   }
@@ -359,15 +328,8 @@ export class App {
     const inner = vp.querySelector('.map-inner');
     if (!this.mapView) {
       const r = vp.getBoundingClientRect();
-      if (this.ctx) {
-        const s = 0.95, c = this._mapCenter || { x: MAPW / 2, y: MAPH / 2 };
-        this.mapView = { scale: s, x: r.width / 2 - c.x * s, y: r.height / 2 - c.y * s };
-      } else {
-        const bnd = this._mapBounds || { x: 0, y: 0, w: MAPW, h: MAPH };
-        const s = Math.max(0.45, Math.min(1.15, Math.min((r.width - 20) / bnd.w, (r.height - 20) / bnd.h)));
-        const cx = bnd.x + bnd.w / 2, cy = bnd.y + bnd.h / 2;
-        this.mapView = { scale: s, x: r.width / 2 - cx * s, y: r.height / 2 - cy * s };
-      }
+      const s = 0.8, c = this._mapCenter || { x: MAPW / 2, y: MAPH / 2 };
+      this.mapView = { scale: s, x: r.width / 2 - c.x * s, y: r.height / 2 - c.y * s };
     }
     this.applyMapT(inner);
     this.bindPanZoom(vp, inner);
@@ -375,7 +337,7 @@ export class App {
 
   bindPanZoom(vp, inner) {
     const pts = new Map(); let st = null;
-    const clampScale = (s) => Math.max(0.45, Math.min(1.8, s));
+    const clampScale = (s) => Math.max(MIN_SCALE, Math.min(MAX_SCALE, s));
     const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
     const apply = () => this.applyMapT(inner);
     vp.addEventListener('pointerdown', (e) => {
@@ -469,10 +431,19 @@ export class App {
 
   paneObjectives() {
     const h = this.h.bind(this);
-    const objs = objectives(this.ctx);
+    const open = worldNodes(this.profile).filter((n) => n.state !== 'locked');
+    if (!this.goalSite || !open.some((n) => n.id === this.goalSite)) this.goalSite = open[0]?.id;
+    const ctx = this.ctxFor(this.goalSite);
+    const tabs = h('div', { class: 'mission-tabs' });
+    for (const n of open)
+      tabs.append(h('button', { class: 'mission-tab' + (n.id === this.goalSite ? ' on' : ''), onclick: () => { this.goalSite = n.id; this.ctx = this.ctxFor(n.id); this.render(); } },
+        n.site.code, n.state === 'cleared' && ' ✓'));
+    const node = nodeFor(ctx.mission.id);
+    const objs = objectives(ctx);
     const anyMain = objs.filter((o) => o.main).every((o) => o.done);
-    const out = [h('div', { class: 'section-h' }, 'Tujuan'),
-      h('div', { style: 'color:var(--muted);font-size:13px;margin-bottom:14px' }, this.ctx.mission.brief)];
+    const out = [tabs,
+      h('div', { class: 'section-h' }, `${ctx.mission.title} · ${node.district} · ${DIFF_LABEL[node.difficulty]}`),
+      h('div', { style: 'color:var(--muted);font-size:13px;margin-bottom:14px' }, ctx.mission.brief)];
     for (const o of objs) {
       out.push(h('div', { class: 'obj' },
         h('div', { class: 'ic', style: o.done ? 'color:var(--green);border-color:var(--green-dim)' : '' }, o.done ? '✓' : '○'),
@@ -481,11 +452,10 @@ export class App {
     }
     if (anyMain) {
       out.push(h('div', { class: 'section-h', style: 'margin-top:18px' }, 'Selesaikan & serahkan'));
-      const first = !this.profile.cleared[this.ctx.mission.id];
-      for (const e of endings(this.ctx)) {
-        const node = nodeFor(this.ctx.mission.id);
+      const first = !this.profile.cleared[ctx.mission.id];
+      for (const e of endings(ctx)) {
         const cr = first ? e.reward : Math.round(e.reward / 4);
-        out.push(h('button', { class: 'card', disabled: !e.available, onclick: () => e.available && this.submitSite(e.id) },
+        out.push(h('button', { class: 'card', disabled: !e.available, onclick: () => e.available && this.submitSite(ctx, e.id) },
           h('h3', {}, e.label),
           h('div', { class: 'foot' }, h('span', { class: 'reward' }, `+${cr} ◆ · +${first ? (node?.repReward || 0) : Math.round((node?.repReward || 0) / 4)} rep`))));
       }
@@ -605,18 +575,6 @@ export class App {
           h('b', {}, a.cmd), a.enabled ? h('span', {}, '▸') : h('small', { class: 'reason' }, a.reason)));
       }
       sheet.append(h('button', { class: 'act dim', onclick: close }, 'TUTUP'));
-    } else if (o.kind === 'site') {
-      const n = nodeFor(o.id);
-      const st = nodeState(this.profile, n.id);
-      sheet.append(
-        h('div', { class: 'code', style: 'color:var(--green);font-size:12px;font-family:var(--mono)' }, n.site.code, ' · ', n.district, ' · ', DIFF_LABEL[n.difficulty]),
-        h('h2', {}, n.site.title),
-        h('p', { style: 'color:var(--muted);font-size:13px;margin:6px 0 2px' }, n.site.client),
-        h('p', { style: 'color:var(--ink);font-size:13px;margin:8px 0' }, n.site.brief),
-        h('div', { style: 'display:flex;align-items:center;gap:10px;margin:8px 0' },
-          st === 'cleared' && h('span', { class: 'badge' }, '✓ selesai'),
-          h('span', { style: 'color:var(--amber);font-weight:600;margin-left:auto' }, `+${n.site.reward} ◆ · +${n.repReward} rep`)),
-        h('button', { class: 'jackin', onclick: () => this.jackIn(n.id) }, '▸ JACK IN'));
     } else if (o.kind === 'catalog') {
       if (!o.group) {
         sheet.append(h('h2', {}, 'Command'));
@@ -672,7 +630,7 @@ export class App {
         h('div', { class: 'file' }, o.res.text),
         h('p', { style: 'color:var(--amber)' }, `+${o.res.reward} ◆   ·   +${o.res.rep} rep`),
         o.res.unlocked.length && h('p', { style: 'color:var(--cyan)' }, 'Tool terbuka: ' + o.res.unlocked.map((t) => TOOLS[t].name).join(', ')),
-        h('button', { class: 'act', onclick: () => this.jackOut() }, 'KEMBALI KE KOTA'));
+        h('button', { class: 'act', onclick: close }, 'LANJUT'));
     }
     return h('div', { class: 'overlay', onclick: close }, sheet);
   }
