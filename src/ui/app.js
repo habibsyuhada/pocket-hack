@@ -243,58 +243,76 @@ export class App {
   }
 
   // ===== unified map: city targets + (when jacked in) network nodes =====
+  // Every map entity — a city target or a network device — is one `.node`
+  // card so the map reads as a single connected graph (no mixed formats).
+  nodeCard({ cls, x, y, icon, title, sub, st, stCls, onclick }) {
+    const h = this.h.bind(this);
+    return h('button', { class: 'node ' + cls, style: `left:${x}%;top:${y}%`, onclick },
+      h('div', { class: 'nm' }, this.ic(icon), title),
+      sub && h('div', { class: 'ad' }, sub),
+      st && h('div', { class: 'st ' + (stCls || '') }, st));
+  }
+
   paneMap() {
     const h = this.h.bind(this);
     const map = h('div', { class: 'worldmap' });
 
-    // network edges first (under the pins), only while jacked in
-    if (this.ctx) {
-      const run = this.ctx.run;
-      const devs = Object.values(run.devices).filter((d) => d.discovered);
-      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      svg.setAttribute('class', 'edge');
-      for (const d of devs) for (const l of d.links || []) {
-        const t = run.devices[l];
-        if (!t?.discovered) continue;
-        const ln = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-        ln.setAttribute('x1', d.x + '%'); ln.setAttribute('y1', d.y + '%');
-        ln.setAttribute('x2', t.x + '%'); ln.setAttribute('y2', t.y + '%');
-        svg.append(ln);
+    if (!this.ctx) {
+      // ----- city map: targets as node cards -----
+      for (const n of worldNodes(this.profile)) {
+        const locked = n.state === 'locked';
+        const cleared = n.state === 'cleared';
+        map.append(this.nodeCard({
+          cls: 'node-target' + (locked ? ' off' : '') + (cleared ? ' done' : ''),
+          x: n.x, y: n.y, icon: 'target',
+          title: locked ? '???' : n.site.title,
+          sub: locked ? 'sinyal lemah' : n.district,
+          st: locked ? 'TERKUNCI' : cleared ? 'SELESAI' : DIFF_LABEL[n.difficulty],
+          stCls: cleared ? 'a' : '',
+          onclick: () => {
+            if (locked) { alert('Sinyal lemah. Naikkan reputasi atau beli intel untuk membuka lokasi ini.'); return; }
+            this.overlay = { kind: 'site', id: n.id }; this.render();
+          }
+        }));
       }
-      map.append(svg);
+      return [h('div', { class: 'section-h' }, 'Peta Kota — pilih target'), map];
     }
 
-    // city target pins — dimmed into the background while jacked in
-    for (const n of worldNodes(this.profile)) {
-      map.append(h('button', { class: 'site-pin ' + n.state + (this.ctx ? ' dim' : ''), style: `left:${n.x}%;top:${n.y}%`,
-        onclick: () => {
-          if (this.ctx) return;
-          if (n.state === 'locked') { alert('Sinyal lemah. Naikkan reputasi atau beli intel untuk membuka lokasi ini.'); return; }
-          this.overlay = { kind: 'site', id: n.id }; this.render();
-        } },
-        h('span', { class: 'pin-dot' }, n.state === 'cleared' ? '✓' : n.state === 'locked' ? '?' : '◉'),
-        h('span', { class: 'pin-nm' }, n.state === 'locked' ? '???' : n.site.title)));
+    // ----- network map: the target's nodes as a connected graph -----
+    const run = this.ctx.run;
+    const devs = Object.values(run.devices).filter((d) => d.discovered);
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'edge');
+    const line = (x1, y1, x2, y2, dashed) => {
+      const ln = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      ln.setAttribute('x1', x1 + '%'); ln.setAttribute('y1', y1 + '%');
+      ln.setAttribute('x2', x2 + '%'); ln.setAttribute('y2', y2 + '%');
+      if (dashed) ln.setAttribute('stroke-dasharray', '3 4');
+      svg.append(ln);
+    };
+    for (const d of devs) for (const l of d.links || []) {
+      const t = run.devices[l];
+      if (t?.discovered) line(d.x, d.y, t.x, t.y);
     }
+    // link the rig origin to each entry device so the graph is connected
+    for (const id of this.ctx.mission.entry) { const d = run.devices[id]; if (d?.discovered) line(50, 95, d.x, d.y, true); }
+    map.append(svg);
 
-    // network nodes + rig origin, on the SAME map
-    if (this.ctx) {
-      const run = this.ctx.run;
-      for (const d of Object.values(run.devices).filter((x) => x.discovered)) {
-        const cur = run.current === d.id;
-        map.append(h('button', { class: 'node' + (cur ? ' cur' : '') + (d.online ? '' : ' off'), style: `left:${d.x}%;top:${d.y}%`,
-          onclick: () => cur ? (this.view = 'files', this.render()) : this.tapObject({ type: 'device', id: d.id }) },
-          h('div', { class: 'nm' }, this.ic(d.kind), d.name),
-          h('div', { class: 'ad' }, d.addr),
-          h('div', { class: 'st ' + (d.access !== 'none' ? 'a' : d.online && !d.statusText ? '' : 'o') },
-            d.access !== 'none' ? LEVEL_LABEL[d.access] : !d.online ? 'OFFLINE' : d.statusText || 'TERLIHAT')));
-      }
-      map.append(h('button', { class: 'node rig-node', style: 'left:50%;top:93%', onclick: () => this.tapObject({ type: 'rig' }) },
-        h('div', { class: 'nm' }, this.ic('rig'), 'RIG'),
-        h('div', { class: 'ad' }, 'ketuk: SCAN')));
+    for (const d of devs) {
+      const cur = run.current === d.id;
+      map.append(this.nodeCard({
+        cls: (cur ? 'cur' : '') + (d.online ? '' : ' off'),
+        x: d.x, y: d.y, icon: d.kind, title: d.name, sub: d.addr,
+        st: d.access !== 'none' ? LEVEL_LABEL[d.access] : !d.online ? 'OFFLINE' : d.statusText || 'TERLIHAT',
+        stCls: d.access !== 'none' ? 'a' : d.online && !d.statusText ? '' : 'o',
+        onclick: () => cur ? (this.view = 'files', this.render()) : this.tapObject({ type: 'device', id: d.id })
+      }));
     }
+    map.append(this.nodeCard({ cls: 'rig-node', x: 50, y: 95, icon: 'rig', title: 'RIG', sub: 'ketuk: SCAN',
+      onclick: () => this.tapObject({ type: 'rig' }) }));
 
-    const out = [h('div', { class: 'section-h' }, this.ctx ? `${this.ctx.mission.code} · ${this.ctx.mission.title}` : 'Peta Kota'), map];
-    if (this.ctx) out.push(h('div', { class: 'map-hint' }, 'Ketuk RIG untuk SCAN · node untuk aksi · node terhubung buka File'));
+    const out = [h('div', { class: 'section-h' }, `${this.ctx.mission.code} · ${this.ctx.mission.title}`), map,
+      h('div', { class: 'map-hint' }, 'Ketuk RIG untuk SCAN · node untuk aksi · node terhubung buka File')];
     return out;
   }
 

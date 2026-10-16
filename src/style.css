@@ -191,12 +191,12 @@ button:active:not(:disabled) { transform: scale(0.97); }
 .back-row { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 13px; padding: 2px 0 10px; }
 .back-row .ic-svg { font-size: 18px; }
 
-/* unified map: dimmed city pins + rig origin + hint */
-.site-pin.dim { opacity: 0.28; }
-.site-pin.dim .pin-dot { animation: none; box-shadow: none; }
-.node.rig-node { border-color: var(--amber); width: 88px; }
-.node.rig-node .nm { color: var(--amber); }
-.node.rig-node .nm .ic-svg { color: var(--amber); }
+/* unified map: every entity is a .node card (targets + devices + rig) */
+.node.node-target { border-color: var(--green-dim); box-shadow: 0 0 0 3px var(--green-ghost), 0 4px 12px rgba(0,0,0,0.3); }
+.node.node-target.done { border-color: var(--green); }
+.node.node-target.off { border-color: var(--line); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+.node.rig-node { border-color: var(--amber); width: 96px; }
+.node.rig-node .nm, .node.rig-node .nm .ic-svg { color: var(--amber); }
 .map-hint { color: var(--faint); font-size: 11px; text-align: center; padding: 10px 6px 2px; }
 .log { font-family: var(--mono); }
 .log .entry { margin-bottom: 4px; white-space: pre-wrap; word-break: break-word; }
