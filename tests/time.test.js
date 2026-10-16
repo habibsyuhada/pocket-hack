@@ -71,3 +71,38 @@ describe('day & focus', () => {
     expect(seasonName(29)).toBe('Penghujan');
   });
 });
+
+import { perksFor } from '../src/game/perks.js';
+import { talk } from '../src/game/npc.js';
+import { collect, startContract } from '../src/game/retainer.js';
+import { siteById } from '../src/sites/index.js';
+
+describe('weekly events change the numbers, softly', () => {
+  it('Lomba Mingguan doubles contracts and boosts talks', () => {
+    const p = newProfile();
+    p.day = 7;
+    const m = perksFor(p);
+    expect(m.retainerMult).toBe(2);
+    expect(talk(p, 'laras', m).gain).toBe(5);
+    const q = newProfile();
+    q.day = 7; q.cleared.s00 = 'x'; startContract(q, 's00');
+    const normal = (() => { const r = newProfile(); r.cleared.s00 = 'x'; startContract(r, 's00'); return collect(r, 's00', siteById('s00')).credits; })();
+    expect(collect(q, 's00', siteById('s00'), perksFor(q)).credits).toBe(normal * 2);
+  });
+
+  it('Pemadaman slows loading but pays overtime', () => {
+    const p = newProfile();
+    p.day = 5;
+    const m = perksFor(p);
+    expect(m.loading).toBe(1.5);
+    expect(m.retainerMult).toBe(1.3);
+  });
+
+  it('ordinary days are neutral', () => {
+    const m = perksFor(newProfile());
+    expect(m.loading).toBe(1);
+    expect(m.retainerMult).toBe(1);
+    expect(m.marketDiscount).toBe(0);
+    expect(m.event).toBeNull();
+  });
+});

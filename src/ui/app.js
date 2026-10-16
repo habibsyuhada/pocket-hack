@@ -8,7 +8,7 @@ import { CITY, WORLD_NODES, DIFF_LABEL, nodeFor, worldNodes, isAccepted } from '
 import { MARKET, buy, canBuy, owned, priceFor } from '../game/market.js';
 import { ITEMS, KOPI_FOCUS, KOPI_PRICE, MISSION_ITEMS, addItem, addAll, removeItem, countOf, contractDrop } from '../game/items.js';
 import { NPCS, LEVEL_NAMES, AFF_STEPS, npcById, npcState, levelOf, levelProgress, isVisible, npcSpot, canTalk, canGift, talk, gift, missionBond } from '../game/npc.js';
-import { focusCostFor, restoreFocus, loadingMult, spendFocus, sleep, focusState, FOCUS_LABEL, seasonName } from '../game/time.js';
+import { eventFor, focusCostFor, restoreFocus, loadingMult, spendFocus, sleep, focusState, FOCUS_LABEL, seasonName } from '../game/time.js';
 import { perksFor } from '../game/perks.js';
 import { canContract, startContract, hasContract, pendingDays, payout, collect } from '../game/retainer.js';
 import { rankFor, nextRank, rankProgress } from '../game/progression.js';
@@ -600,7 +600,8 @@ export class App {
       h('div', { class: 'zoom-btns' },
         h('button', { class: 'zoom-btn', onclick: () => this.zoomBy(1.25) }, '+'),
         h('button', { class: 'zoom-btn', onclick: () => this.zoomBy(0.8) }, '−')),
-      h('div', { class: 'map-tag' }, `◉ ${CITY.name}`));
+      h('div', { class: 'map-tag' }, `◉ ${CITY.name} · H${this.profile.day} · ${seasonName(this.profile.day)}`,
+        perksFor(this.profile).event && h('b', { class: 'ev' }, `★ ${perksFor(this.profile).event.name}`)));
     return [vp];
   }
 
@@ -678,7 +679,9 @@ export class App {
 
   paneMarket() {
     const h = this.h.bind(this);
+    const ev = perksFor(this.profile).event;
     const out = [h('div', { class: 'section-h' }, `Pasar Gelap · ◆ ${this.profile.credits}`)];
+    if (ev?.marketDiscount) out.push(h('div', { class: 'event-chip' }, h('b', {}, `★ ${ev.name}`), h('small', {}, ev.desc)));
     for (const item of MARKET) {
       const have = owned(this.profile, item);
       const c = canBuy(this.profile, item);
@@ -926,6 +929,7 @@ export class App {
       sheet.append(h('h2', {}, 'Safehouse'),
         h('p', { style: 'color:var(--muted);font-size:13px;margin:4px 0 10px' }, `Hari ${this.profile.day} · Musim ${seasonName(this.profile.day)}`),
         ev && h('div', { class: 'event-chip' }, h('b', {}, ev.name), h('small', {}, ev.desc)),
+        eventFor(this.profile.day + 1) && h('p', { style: 'color:var(--muted);font-size:12px;margin:0 0 10px' }, `Besok: ★ ${eventFor(this.profile.day + 1).name}`),
         h('div', { class: 'focus-box' },
           h('div', { class: 'focus-top' }, h('b', {}, `Fokus ${this.profile.focus}`), h('span', { class: 'fo ' + focusState(this.profile.focus) }, FOCUS_LABEL[focusState(this.profile.focus)])),
           h('div', { class: 'rankbar' }, h('i', { style: `width:${Math.min(100, this.profile.focus)}%` })),
