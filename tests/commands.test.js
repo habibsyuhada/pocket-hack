@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { newProfile, hasCmd } from '../src/game/profile.js';
+import { newProfile, hasCmd, loadMs, LOAD_MS } from '../src/game/profile.js';
 import { newRun } from '../src/engine/core.js';
 import { exec } from '../src/engine/actions.js';
 import { CMD_META, DEFAULT_CMDS, GROUPS, commandTargets, groupCommands } from '../src/engine/commands.js';
@@ -79,5 +79,24 @@ describe('command catalog', () => {
     exec(ctx, 'SEARCH', { type: 'device', id: 'router' });
     expect(ctx.run.log.length).toBeGreaterThan(before);
     expect(ctx.run.log.some((e) => /Memindai/.test(e.text))).toBe(true);
+  });
+
+  it('CONNECT does not auto-reveal linked devices; SCAN does', () => {
+    const site = SITES.find((s) => s.id === 's00');
+    const ctx = { mission: site, run: newRun(site), profile: newProfile() };
+    exec(ctx, 'SCAN', { type: 'rig' });
+    exec(ctx, 'CONNECT', { type: 'device', id: 'router' });
+    expect(ctx.run.devices.printer.discovered).toBe(false);
+    exec(ctx, 'SCAN', { type: 'device', id: 'router' });
+    expect(ctx.run.devices.printer.discovered).toBe(true);
+  });
+
+  it('loading time shrinks with market Overclock upgrades', () => {
+    const p = newProfile();
+    p.credits = 1000;
+    expect(loadMs(p)).toBe(LOAD_MS[0]);
+    expect(buy(p, 'speed_2').ok).toBe(false); // needs Overclock I first
+    for (const id of ['speed_1', 'speed_2', 'speed_3']) expect(buy(p, id).ok).toBe(true);
+    expect(loadMs(p)).toBe(LOAD_MS[3]);
   });
 });

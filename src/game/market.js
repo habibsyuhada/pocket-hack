@@ -1,4 +1,4 @@
-import { TOOLS } from './profile.js';
+import { TOOLS, LOAD_MS } from './profile.js';
 import { siteById } from '../sites/index.js';
 import { WORLD_NODES } from './world.js';
 
@@ -10,6 +10,13 @@ export const MARKET = [
     desc: 'Buka lokasi "Blueprint Asli" di peta lebih awal.' },
   { id: 'intel_s03', name: 'Intel: Bursa Selatan', cost: 90, kind: 'intel', site: 's03',
     desc: 'Buka lokasi "Brankas Dingin" di peta lebih awal.' },
+  // Loading-speed upgrades: every command waits behind a loading screen
+  { id: 'speed_1', name: 'Overclock I', cost: 70, kind: 'speed', level: 1,
+    desc: `Loading perintah ${LOAD_MS[0] / 1000}s → ${LOAD_MS[1] / 1000}s.` },
+  { id: 'speed_2', name: 'Overclock II', cost: 150, kind: 'speed', level: 2, needs: 'speed_1',
+    desc: `Loading perintah ${LOAD_MS[1] / 1000}s → ${LOAD_MS[2] / 1000}s.` },
+  { id: 'speed_3', name: 'Overclock III', cost: 280, kind: 'speed', level: 3, needs: 'speed_2',
+    desc: `Loading perintah ${LOAD_MS[2] / 1000}s → ${LOAD_MS[3] / 1000}s.` },
   // Command unlocks (extra capabilities beyond the first 4 sites)
   { id: 'cmd_search', name: 'Command: SEARCH', cost: 70, kind: 'cmd', cmd: 'SEARCH',
     desc: 'Cari kata kunci di seluruh file sebuah node.' },
@@ -26,6 +33,7 @@ export const MARKET = [
 export function owned(profile, item) {
   if (item.kind === 'tool') return !!profile.tools[item.tool];
   if (item.kind === 'intel') return !!profile.intel[item.site];
+  if (item.kind === 'speed') return (profile.speed || 0) >= item.level;
   if (item.kind === 'cmd') return (item.cmds || [item.cmd]).every((c) => (profile.cmds || []).includes(c));
   return false;
 }
@@ -48,6 +56,7 @@ export function buy(profile, itemId) {
   profile.credits -= item.cost;
   profile.bought.push(item.id);
   if (item.kind === 'tool') profile.tools[item.tool] = true;
+  else if (item.kind === 'speed') profile.speed = item.level;
   else if (item.kind === 'intel') profile.intel[item.site] = true;
   else if (item.kind === 'cmd') { profile.cmds = profile.cmds || []; for (const c of item.cmds || [item.cmd]) if (!profile.cmds.includes(c)) profile.cmds.push(c); }
   return { ok: true, msg: `Dibeli: ${item.name}.` };

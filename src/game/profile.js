@@ -25,6 +25,7 @@ export function newProfile() {
     bought: [],
     archive: [],
     discovered: {},
+    speed: 0,                   // loading-speed upgrade level (market)
     accepted: {},               // siteId -> true once the mission is taken at the mission board
     cleared: {},
     intel: {},                  // siteId -> true (bought scouting intel)
@@ -32,6 +33,10 @@ export function newProfile() {
     location: 'tengah'
   };
 }
+
+// Every command runs behind a full-screen loading; market upgrades shorten it.
+export const LOAD_MS = [1800, 1100, 600, 250];
+export const loadMs = (profile) => LOAD_MS[Math.min(profile.speed || 0, LOAD_MS.length - 1)];
 
 export const hasCmd = (profile, cmd) => (profile.cmds || DEFAULT_CMDS).includes(cmd);
 

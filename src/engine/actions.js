@@ -205,11 +205,6 @@ export function exec(ctx, cmd, target, arg) {
       run.current = d.id;
       if (d.open && !atLeast(d.access, d.open)) d.access = d.open;
       out.push({ t: 'ok', text: `Terhubung ke ${d.name}. Akses: ${LEVEL_LABEL[d.access]}.` });
-      // Connecting reveals the devices this node can see (auto-scan).
-      for (const id of d.links || []) {
-        const x = device(run, id);
-        if (x && !x.discovered) { x.discovered = true; out.push({ t: 'out', text: `Terlihat: ${x.addr.padEnd(13)} ${x.name}${x.online ? '' : ' [OFFLINE]'}`.trimEnd() }); }
-      }
       applyEffects(run, mission, d.onConnect, out);
       break;
     }

@@ -2,9 +2,9 @@ import { SITES, siteById } from '../sites/index.js';
 import { newProfile, newRun, TOOLS, LEVEL_LABEL, atLeast, device, visibleFiles } from '../engine/core.js';
 import { getActions, getChoices, exec, objectives, hint, endings, finish, LOCAL_CAP } from '../engine/actions.js';
 import { CMD_META, GROUPS, groupCommands, commandTargets } from '../engine/commands.js';
-import { hasCmd } from '../game/profile.js';
+import { hasCmd, loadMs } from '../game/profile.js';
 import { DEFAULT_CMDS } from '../engine/commands.js';
-import { CITY, WORLD_NODES, DIFF_LABEL, BOARD, nodeFor, worldNodes, isAccepted } from '../game/world.js';
+import { CITY, WORLD_NODES, DIFF_LABEL, nodeFor, worldNodes, isAccepted } from '../game/world.js';
 import { MARKET, buy, canBuy, owned } from '../game/market.js';
 import { rankFor, nextRank, rankProgress } from '../game/progression.js';
 import { saveProfile, loadProfile, clearProfile, buzz } from '../platform/storage.js';
@@ -28,6 +28,7 @@ export class App {
     this.selSite = null;
     this.showHint = false;
     this.overlay = null;
+    this.busy = null;               // { label, ms } while a command is loading
     this.intro = false;
     this.mapView = null;             // { x, y, scale } pan/zoom, lazily centered
     this._dragged = false;
@@ -85,10 +86,25 @@ export class App {
     this.profile.lastSite = siteId;
   }
 
+  // ---------- loading ----------
+  // Every command runs behind a full-screen loading; Overclock upgrades shorten it.
+  withLoading(label, fn) {
+    if (this.busy) return;
+    const ms = loadMs(this.profile);
+    this.busy = { label, ms };
+    this.render();
+    setTimeout(() => { this.busy = null; fn(); }, ms);
+  }
+
   // ---------- commands ----------
   runCommand(cmd, target) {
     const choosers = ['LOGIN', 'CRACK', 'DECRYPT', 'COMPARE', 'CONFIG', 'CONTROL'];
     if (choosers.includes(cmd)) { this.openChooser(cmd, target); return; }
+    this.overlay = null;
+    this.withLoading(cmd, () => this.finishCommand(cmd, target));
+  }
+
+  finishCommand(cmd, target) {
     const { sheet } = exec(this.ctx, cmd, target);
     buzz('light');
     if (cmd === 'CONNECT' && this.cur) { this.sel = { type: 'device', id: this.cur }; this.view = 'terminal'; }
@@ -105,20 +121,25 @@ export class App {
 
   applyChoice(value) {
     const o = this.overlay;
-    const { sheet } = exec(this.ctx, o.cmd, o.target, value);
-    buzz('light');
-    this.persist();
-    this.overlay = sheet ? { kind: 'read', sheet } : null;
-    this.render();
+    this.overlay = null;
+    this.withLoading(o.cmd, () => {
+      const { sheet } = exec(this.ctx, o.cmd, o.target, value);
+      buzz('light');
+      this.persist();
+      this.overlay = sheet ? { kind: 'read', sheet } : null;
+      this.render();
+    });
   }
 
   applyConfig() {
     const o = this.overlay;
-    for (const [key, value] of Object.entries(o.config)) exec(this.ctx, 'CONFIG', o.target, [key, value]);
-    buzz('light');
-    this.persist();
     this.overlay = null;
-    this.render();
+    this.withLoading('CONFIG', () => {
+      for (const [key, value] of Object.entries(o.config)) exec(this.ctx, 'CONFIG', o.target, [key, value]);
+      buzz('light');
+      this.persist();
+      this.render();
+    });
   }
 
   tapObject(target) {
@@ -206,8 +227,18 @@ export class App {
     if (this.showHint && this.ctx) el.append(this.h('div', { class: 'hint' }, '💡 ', hint(this.ctx)));
     el.append(this.dock());
     if (this.overlay) el.append(this.vOverlay());
+    if (this.busy) el.append(this.vLoading());
     this.root.replaceChildren(el);
     if (this.view === 'map') this.setupMap();
+  }
+
+  vLoading() {
+    const h = this.h.bind(this);
+    return h('div', { class: 'loading' },
+      h('div', { class: 'loading-box' },
+        h('div', { class: 'loading-cmd' }, '> ', this.busy.label.toLowerCase(), h('span', { class: 'blink' }, '_')),
+        h('div', { class: 'loading-bar' }, h('i', { style: `animation-duration:${this.busy.ms}ms` })),
+        h('small', {}, 'memproses…')));
   }
 
   // ---------- intro ----------
@@ -272,7 +303,7 @@ export class App {
   emptyNeedJack() {
     const h = this.h.bind(this);
     return [h('div', { class: 'empty', style: 'margin-top:40px' },
-      'Belum ada node dipilih.\nTerima misi di PAPAN MISI, lalu ketuk node-nya di peta.'),
+      'Belum ada node dipilih.\nTerima sebuah misi di peta, lalu ketuk node-nya.'),
       h('button', { class: 'jackin', style: 'max-width:260px;margin:14px auto 0;display:block', onclick: () => { this.view = 'map'; this.render(); } }, '▸ KE PETA')];
   }
 
@@ -302,23 +333,32 @@ export class App {
     inner.append(svg);
 
     const sites = worldNodes(this.profile);
-    const tags = [], cards = [];
-    const boardPos = { x: (BOARD.x / 100) * MAPW, y: (BOARD.y / 100) * MAPH };
-    let center = boardPos;
-    const waiting = sites.filter((n) => !isAccepted(this.profile, n.id) && n.state !== 'locked').length;
-    cards.push(this.nodeCardPx({ cls: 'node-target', cx: boardPos.x, cy: boardPos.y, icon: 'target', title: 'PAPAN MISI',
-      sub: waiting ? `${waiting} misi baru` : 'belum ada misi baru', st: 'TERIMA MISI', stCls: 'a',
-      onclick: () => { this.overlay = { kind: 'board' }; this.render(); } }));
+    const cards = [];
+    let center = null;
     for (const n of sites) {
-      if (!isAccepted(this.profile, n.id)) continue;
       const base = { x: (n.x / 100) * MAPW, y: (n.y / 100) * MAPH };
+      const acc = isAccepted(this.profile, n.id), locked = n.state === 'locked', cleared = n.state === 'cleared';
+      if (!center && !locked && !cleared) center = base;
       if (this._centerOn === n.id) center = base;
+      // one node = one mission: the mission node sits at the heart of its site
+      cards.push(this.nodeCardPx({
+        cls: 'node-target' + (locked ? ' off' : '') + (cleared ? ' done' : '') + (acc && !cleared ? ' live' : ''),
+        cx: base.x, cy: base.y, icon: 'target',
+        title: locked ? '???' : n.site.title,
+        sub: locked ? 'sinyal lemah' : `${n.site.code} · ${n.district}`,
+        st: locked ? 'TERKUNCI' : cleared ? 'SELESAI' : acc ? 'AKTIF' : 'MISI BARU',
+        stCls: locked ? '' : 'a',
+        onclick: () => {
+          if (locked) { alert('Sinyal lemah. Naikkan reputasi atau beli intel untuk membuka misi ini.'); return; }
+          if (acc) { this.focus(n.id); this.view = 'goals'; this.render(); return; }
+          this.overlay = { kind: 'mission', id: n.id }; this.render();
+        }
+      }));
+      if (!acc) continue;
       const ctx = this.ctxFor(n.id), run = ctx.run;
       const dpos = (d) => ({ x: base.x + ((d.x - 50) / 100) * CLUSTER, y: base.y + ((d.y - 50) / 100) * CLUSTER });
       const devs = Object.values(run.devices).filter((d) => d.discovered);
       for (const d of devs) for (const l of d.links || []) { const t = run.devices[l]; if (t?.discovered) line(dpos(d), dpos(t)); }
-      tags.push(h('div', { class: 'site-tag' + (n.state === 'cleared' ? ' done' : ''), style: `left:${base.x}px;top:${base.y - CLUSTER * 0.3 - 58}px` },
-        `${n.site.code} · ${n.district}`));
       for (const d of devs) {
         const cur = run.current === d.id, p = dpos(d);
         cards.push(this.nodeCardPx({
@@ -326,12 +366,12 @@ export class App {
           cx: p.x, cy: p.y, icon: d.kind, title: d.name, sub: d.addr,
           st: d.access !== 'none' ? LEVEL_LABEL[d.access] : !d.online ? 'OFFLINE' : d.statusText || 'TERLIHAT',
           stCls: d.access !== 'none' ? 'a' : d.online && !d.statusText ? '' : 'o',
-          onclick: () => { this.focus(n.id); if (cur) { this.view = 'terminal'; this.render(); } else this.tapObject({ type: 'device', id: d.id }); }
+          onclick: () => { this.focus(n.id); this.tapObject({ type: 'device', id: d.id }); }
         }));
       }
     }
-    inner.append(...tags, ...cards);
-    this._mapCenter = center;
+    inner.append(...cards);
+    this._mapCenter = center || { x: MAPW * 0.3, y: MAPH * 0.68 };
 
     const vp = h('div', { class: 'worldmap pan' }, inner,
       h('div', { class: 'zoom-btns' },
@@ -465,7 +505,7 @@ export class App {
   paneObjectives() {
     const h = this.h.bind(this);
     const open = worldNodes(this.profile).filter((n) => isAccepted(this.profile, n.id));
-    if (!open.length) return [this.h('div', { class: 'empty', style: 'margin-top:40px' }, 'Belum ada misi diterima.\nKetuk node PAPAN MISI di peta untuk mengambil misi.')];
+    if (!open.length) return [this.h('div', { class: 'empty', style: 'margin-top:40px' }, 'Belum ada misi diterima.\nKetuk node misi di peta untuk menerimanya.')];
     if (!this.goalSite || !open.some((n) => n.id === this.goalSite)) this.goalSite = open[0]?.id;
     const ctx = this.ctxFor(this.goalSite);
     const tabs = h('div', { class: 'mission-tabs' });
@@ -618,23 +658,17 @@ export class App {
           h('b', {}, a.cmd), a.enabled ? h('span', {}, '▸') : h('small', { class: 'reason' }, a.reason)));
       }
       sheet.append(h('button', { class: 'act dim', onclick: close }, 'TUTUP'));
-    } else if (o.kind === 'board') {
-      sheet.append(h('h2', {}, 'Papan Misi'));
-      const list = worldNodes(this.profile);
-      for (const n of list) {
-        const acc = isAccepted(this.profile, n.id), locked = n.state === 'locked';
-        sheet.append(h('div', { class: 'job' + (locked ? ' off' : '') },
-          h('div', { class: 'code', style: 'color:var(--green);font-size:12px;font-family:var(--mono)' },
-            locked ? '???' : `${n.site.code} · ${n.district} · ${DIFF_LABEL[n.difficulty]}`),
-          h('b', {}, locked ? 'Sinyal lemah' : n.site.title),
-          h('p', { style: 'color:var(--muted);font-size:12px;margin:4px 0 8px' },
-            locked ? 'Naikkan reputasi atau beli intel untuk membuka misi ini.' : n.site.brief),
-          locked ? null : h('div', { style: 'display:flex;align-items:center;gap:10px' },
-            h('span', { style: 'color:var(--amber);font-weight:600' }, `+${n.site.reward} ◆ · +${n.repReward} rep`),
-            acc ? h('span', { class: 'badge', style: 'margin-left:auto' }, n.state === 'cleared' ? '✓ selesai' : '● diterima')
-              : h('button', { class: 'jackin', style: 'margin-left:auto;width:auto;padding:8px 16px', onclick: () => this.acceptMission(n.id) }, 'TERIMA'))));
-      }
-      sheet.append(h('button', { class: 'act dim', onclick: close }, 'TUTUP'));
+    } else if (o.kind === 'mission') {
+      const n = nodeFor(o.id);
+      sheet.append(
+        h('div', { class: 'code', style: 'color:var(--green);font-size:12px;font-family:var(--mono)' }, n.site.code, ' · ', n.district, ' · ', DIFF_LABEL[n.difficulty]),
+        h('h2', {}, n.site.title),
+        h('p', { style: 'color:var(--muted);font-size:13px;margin:6px 0 2px' }, n.site.client),
+        h('p', { style: 'color:var(--ink);font-size:13px;margin:8px 0' }, n.site.brief),
+        h('div', { style: 'display:flex;align-items:center;gap:10px;margin:8px 0' },
+          h('span', { style: 'color:var(--amber);font-weight:600;margin-left:auto' }, `+${n.site.reward} ◆ · +${n.repReward} rep`)),
+        h('button', { class: 'jackin', onclick: () => this.acceptMission(n.id) }, '▸ TERIMA MISI'),
+        h('button', { class: 'act dim', onclick: close }, 'NANTI'));
     } else if (o.kind === 'catalog') {
       if (!o.group) {
         sheet.append(h('h2', {}, 'Command'));
