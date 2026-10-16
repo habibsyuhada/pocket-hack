@@ -14,6 +14,24 @@ import { iconSvg } from './icons.js';
 const TAB_ICON = { map: 'map', terminal: 'terminal', goals: 'target', market: 'market', profile: 'profile' };
 const MAPW = 1500, MAPH = 2000, CLUSTER = 420; // big open-world canvas (px) + per-site node cluster spread
 const MIN_SCALE = 0.25, MAX_SCALE = 1.8;
+// In-world messages when a command has nothing to act on (instead of a generic error).
+const NO_TARGET = {
+  CONNECT: 'Tidak ada perangkat lain yang terlihat. Jalankan SCAN dulu.',
+  LOGIN: 'Belum punya kredensial untuk node ini.',
+  CRACK: 'Tidak ada sandi di node ini yang bisa dipecahkan.',
+  EXPLOIT: 'Tidak ada celah yang ditemukan di node ini.',
+  ELEVATE: 'Tidak ada jalur untuk menaikkan hak akses di sini.',
+  INSPECT: 'Tidak ada yang bisa diperiksa.',
+  SEARCH: 'Tidak ada file untuk dipindai di node ini.'
+};
+const NOT_CONNECTED = {
+  DEFAULT: 'Belum terhubung ke node mana pun. Jalankan CONNECT dulu.',
+  FILES: 'Belum terhubung — tidak ada file server yang bisa dibuka.',
+  SERVICES: 'Belum terhubung — tidak ada service server yang bisa dibuka.',
+  CONTROL: 'Belum terhubung — tidak ada perangkat yang bisa dikontrol.',
+  DISCONNECT: 'Kamu belum terhubung ke node mana pun.'
+};
+const notConnected = (cmd) => NOT_CONNECTED[cmd] || NOT_CONNECTED.DEFAULT;
 const NODE_PAGES = ['files', 'system', 'control'];
 const TABS = [['map', 'Peta'], ['terminal', 'Terminal'], ['goals', 'Goals'], ['market', 'Pasar'], ['profile', 'Profil']];
 
@@ -185,17 +203,17 @@ export class App {
     if (k === 'map') { this.overlay = null; this.view = 'map'; this.render(); return; }
     if (!this.ctx) { this.toast('Pilih node di peta dulu.'); return; }
     if (k === 'scan') { if (!this.ctx) return this.toast('Pilih node di peta dulu.'); this.overlay = null; this.runCommand('SCAN', this.cur ? { type: 'device', id: this.cur } : { type: 'rig' }); return; }
-    if (k === 'disconnect') { if (!this.cur) return this.toast('Belum terhubung ke node.'); this.overlay = null; this.runCommand('DISCONNECT', { type: 'rig' }); return; }
-    if (k === 'files') { if (!this.cur) return this.toast('CONNECT ke node dulu.'); this.overlay = null; this.openPage('files', 'LS'); return; }
-    if (k === 'system') { if (!this.cur) return this.toast('CONNECT ke node dulu.'); this.overlay = null; this.openPage('system', 'PS'); return; }
-    if (k === 'controlpage') { if (!this.cur) return this.toast('CONNECT ke node dulu.'); this.overlay = null; this.openPage('control', 'CONTROL'); return; }
+    if (k === 'disconnect') { if (!this.cur) return this.toast(notConnected('DISCONNECT')); this.overlay = null; this.runCommand('DISCONNECT', { type: 'rig' }); return; }
+    if (k === 'files') { if (!this.cur) return this.toast(notConnected('FILES')); this.overlay = null; this.openPage('files', 'LS'); return; }
+    if (k === 'system') { if (!this.cur) return this.toast(notConnected('SERVICES')); this.overlay = null; this.openPage('system', 'PS'); return; }
+    if (k === 'controlpage') { if (!this.cur) return this.toast(notConnected('CONTROL')); this.overlay = null; this.openPage('control', 'CONTROL'); return; }
     if (k === 'search') {
-      if (!this.cur) return this.toast('CONNECT ke node dulu.');
+      if (!this.cur) return this.toast(notConnected('SEARCH'));
       this.overlay = null; this.view = 'terminal'; this.runCommand('SEARCH', { type: 'device', id: this.cur }); return;
     }
     // target-based: device / connect / file / proc / control
     const targets = commandTargets(this.ctx, cmd);
-    if (!targets.length) { this.toast(this.cur ? `Tidak ada sasaran untuk ${cmd} di node ini.` : 'CONNECT ke node dulu.'); return; }
+    if (!targets.length) { this.toast(cmd === 'CONNECT' || this.cur ? (NO_TARGET[cmd] || 'Tidak ada yang bisa dilakukan di sini.') : notConnected(cmd)); return; }
     if (targets.length === 1 && targets[0].enabled) { this.runFromCatalog(cmd, targets[0].target); return; }
     this.overlay = { kind: 'param', cmd, targets };
     this.render();
