@@ -5,9 +5,10 @@ import { CMD_META, GROUPS, groupCommands, commandTargets } from '../engine/comma
 import { hasCmd, loadMs } from '../game/profile.js';
 import { DEFAULT_CMDS } from '../engine/commands.js';
 import { CITY, WORLD_NODES, DIFF_LABEL, nodeFor, worldNodes, isAccepted } from '../game/world.js';
-import { MARKET, buy, canBuy, owned } from '../game/market.js';
-import { HINT_COST } from '../game/profile.js';
-import { focusCostFor, loadingMult, spendFocus, sleep, focusState, FOCUS_LABEL, seasonName } from '../game/time.js';
+import { MARKET, buy, canBuy, owned, priceFor } from '../game/market.js';
+import { ITEMS, KOPI_FOCUS, KOPI_PRICE, MISSION_ITEMS, addItem, addAll, removeItem, countOf, contractDrop } from '../game/items.js';
+import { NPCS, LEVEL_NAMES, AFF_STEPS, npcById, npcState, levelOf, levelProgress, isVisible, npcSpot, canTalk, canGift, talk, gift, missionBond } from '../game/npc.js';
+import { focusCostFor, restoreFocus, loadingMult, spendFocus, sleep, focusState, FOCUS_LABEL, seasonName } from '../game/time.js';
 import { perksFor } from '../game/perks.js';
 import { canContract, startContract, hasContract, pendingDays, payout, collect } from '../game/retainer.js';
 import { rankFor, nextRank, rankProgress } from '../game/progression.js';
@@ -143,6 +144,65 @@ export class App {
     setTimeout(() => { this.busy = null; fn(); }, ms);
   }
 
+  supplyRows() {
+    const h = this.h.bind(this);
+    const kopi = countOf(this.profile, 'kopi');
+    const price = Math.max(1, Math.round(KOPI_PRICE * (1 - perksFor(this.profile).marketDiscount)));
+    return [h('div', { class: 'section-h' }, 'Warung'),
+      h('div', { class: 'job' },
+        h('b', {}, `Kopi Susu · punya ${kopi}`),
+        h('p', { style: 'color:var(--muted);font-size:12px;margin:4px 0 8px' }, `Pulihkan Fokus +${Math.round(KOPI_FOCUS * perksFor(this.profile).kopiMult)}.`),
+        h('div', { style: 'display:flex;gap:8px' },
+          h('button', { class: 'act' + (kopi ? '' : ' dim'), style: 'margin:0', onclick: () => this.useKopi() }, 'MINUM'),
+          h('button', { class: 'act', style: 'margin:0', onclick: () => this.buyKopi() }, `BELI ◆${price}`)))];
+  }
+
+  useKopi() {
+    const mods = perksFor(this.profile);
+    if (!countOf(this.profile, 'kopi')) return this.toast('Kamu tidak punya kopi.');
+    if (this.profile.focus >= mods.focusMax) return this.toast('Fokus sudah penuh.');
+    removeItem(this.profile, 'kopi');
+    const before = this.profile.focus;
+    restoreFocus(this.profile, Math.round(KOPI_FOCUS * mods.kopiMult), mods.focusMax);
+    this.persist();
+    this.render();
+    this.toast(`Fokus +${this.profile.focus - before}. Segar lagi.`, 'hint');
+  }
+
+  buyKopi() {
+    const price = Math.max(1, Math.round(KOPI_PRICE * (1 - perksFor(this.profile).marketDiscount)));
+    if (this.profile.credits < price) return this.toast('Kredit tidak cukup untuk beli kopi.');
+    this.profile.credits -= price;
+    addItem(this.profile, 'kopi', 1);
+    this.persist();
+    this.render();
+  }
+
+  // ----- NPC actions -----
+  doTalk(id) {
+    if (!canTalk(this.profile, id)) return this.toast('Sudah ngobrol hari ini. Besok lagi.');
+    this.overlay = null;
+    this.withLoading('NGOBROL', () => {
+      const r = talk(this.profile, id, perksFor(this.profile));
+      this.persist();
+      this.overlay = { kind: 'npc', id, line: r.line };
+      this.render();
+      const msgs = [...(r.kopi ? ['+1 Kopi Susu'] : []), ...r.notes];
+      if (msgs.length) this.toast(msgs.join(' · '), 'hint');
+    }, { cost: 2, ms: 700 });
+  }
+
+  doGift(id, itemId) {
+    this.overlay = null;
+    this.withLoading('HADIAH', () => {
+      const r = gift(this.profile, id, itemId, perksFor(this.profile));
+      this.persist();
+      this.overlay = { kind: 'npc', id, line: r?.line };
+      this.render();
+      if (r?.notes.length) this.toast(r.notes.join(' · '), 'hint');
+    }, { cost: 1, ms: 600 });
+  }
+
   // Safehouse list: offers for cleared sites + today's chore for active contracts.
   contractRows() {
     const h = this.h.bind(this);
@@ -188,8 +248,10 @@ export class App {
     if (!site || !hasContract(this.profile, site.id) || this.cur !== site.entry[0]) return null;
     const got = collect(this.profile, site.id, site, perksFor(this.profile));
     if (!got) return null;
+    const drop = contractDrop(site.id, this.profile.day);
+    if (drop) addItem(this.profile, drop, 1);
     this.persist();
-    return { ...got, title: site.title };
+    return { ...got, title: site.title, drop };
   }
 
   takeContract(siteId) {
@@ -205,7 +267,7 @@ export class App {
       this.view = view;
       const got = view === 'files' ? this.collectRetainer() : null;
       this.render();
-      if (got) this.toast(`Kontrak ${got.title}: +◆${got.credits}${got.days > 1 ? ` (${got.days} hari)` : ''}`, 'doc');
+      if (got) this.toast(`Kontrak ${got.title}: +◆${got.credits}${got.days > 1 ? ` (${got.days} hari)` : ''}${got.drop ? ` · dapat ${ITEMS[got.drop].name}` : ''}`, 'doc');
     });
   }
 
@@ -299,7 +361,14 @@ export class App {
 
   submitSite(ctx, endingId) {
     const node = nodeFor(ctx.mission.id);
-    const res = finish(ctx, endingId, { repReward: node?.repReward || 0 });
+    const first = !this.profile.cleared[ctx.mission.id];
+    const mods = perksFor(this.profile);
+    const res = finish(ctx, endingId, { repReward: node?.repReward || 0, creditMult: mods.creditMult, repMult: mods.repMult });
+    if (first) {
+      addAll(this.profile, MISSION_ITEMS[ctx.mission.id]);
+      res.items = MISSION_ITEMS[ctx.mission.id] || {};
+      res.notes = missionBond(this.profile, ctx.mission.id);
+    }
     this.persist();
     this.overlay = { kind: 'result', res };
     buzz('heavy');
@@ -409,15 +478,16 @@ export class App {
 
   hintBtn() {
     return this.h('button', { class: 'hintbtn' + (this.showHint ? ' on' : ''), onclick: () => this.toggleHint() },
-      this.ic('hint'), !this.showHint && this.h('span', { class: 'hint-cost' }, `◆${HINT_COST}`));
+      this.ic('hint'), !this.showHint && this.h('span', { class: 'hint-cost' }, `◆${perksFor(this.profile).hintCost}`));
   }
 
   // Hints cost credits; the text is fixed at the moment it is bought.
   toggleHint() {
     if (this.showHint) { this.showHint = false; this.render(); return; }
     if (!this.ctx) return this.toast('Terima misi dan pilih node dulu untuk meminta hint.');
-    if (this.profile.credits < HINT_COST) return this.toast(`Kredit tidak cukup. Hint butuh ◆ ${HINT_COST}.`);
-    this.profile.credits -= HINT_COST;
+    const cost = perksFor(this.profile).hintCost;
+    if (this.profile.credits < cost) return this.toast(`Kredit tidak cukup. Hint butuh ◆ ${cost}.`);
+    this.profile.credits -= cost;
     this.hintText = hint(this.ctx);
     this.showHint = true;
     this.persist();
@@ -478,6 +548,13 @@ export class App {
     cards.push(this.nodeCardPx({ cls: 'node-target safehouse', cx: SAFEHOUSE.x, cy: SAFEHOUSE.y, icon: 'rig', title: 'SAFEHOUSE',
       sub: `Hari ${this.profile.day} · ${seasonName(this.profile.day)}`, st: 'ISTIRAHAT', stCls: 'a',
       onclick: () => { this.overlay = { kind: 'safehouse' }; this.render(); } }));
+    for (const npc of NPCS) {
+      if (!isVisible(this.profile, npc)) continue;
+      const pos = npcSpot(npc, this.profile.day), lv = levelOf(npcState(this.profile, npc.id).aff);
+      cards.push(this.nodeCardPx({ cls: 'node-target npc', cx: pos.x, cy: pos.y, icon: 'profile', title: npc.name, sub: npc.role,
+        st: `${LEVEL_NAMES[lv]}${canTalk(this.profile, npc.id) ? ' · ●' : ''}`, stCls: canTalk(this.profile, npc.id) ? 'a' : '',
+        onclick: () => { this.overlay = { kind: 'npc', id: npc.id }; this.render(); } }));
+    }
     for (const n of sites) {
       const base = { x: (n.x / 100) * MAPW, y: (n.y / 100) * MAPH };
       const acc = isAccepted(this.profile, n.id), locked = n.state === 'locked', cleared = n.state === 'cleared';
@@ -609,7 +686,7 @@ export class App {
         h('div', { class: 'main' }, h('b', {}, item.name), h('small', {}, item.desc)),
         have
           ? h('span', { class: 'tag-r', style: 'color:var(--green)' }, 'DIMILIKI')
-          : h('button', { class: 'buy' + (c.ok ? '' : ' off'), onclick: () => c.ok ? this.doBuy(item.id) : this.toast(c.reason) }, `◆ ${item.cost}`)));
+          : h('button', { class: 'buy' + (c.ok ? '' : ' off'), onclick: () => c.ok ? this.doBuy(item.id) : this.toast(c.reason) }, (() => { const pr = priceFor(this.profile, item); return pr < item.cost ? [h('s', { class: 'was' }, String(item.cost)), ` ◆ ${pr}`] : `◆ ${pr}`; })())));
     }
     return out;
   }
@@ -637,6 +714,19 @@ export class App {
       out.push(h('div', { class: 'tool' + (ownd ? '' : ' locked') },
         h('div', { class: 'hd' }, h('b', {}, t.name), h('span', { class: 'cost' }, t.cmd)),
         h('p', {}, ownd ? t.desc : '🔒 Beli di Pasar.')));
+    }
+    out.push(h('div', { class: 'section-h' }, 'Tas'));
+    const bag = Object.keys(ITEMS).filter((id) => countOf(this.profile, id) > 0);
+    if (!bag.length) out.push(h('div', { class: 'empty' }, 'Tas kosong.'));
+    for (const id of bag) {
+      out.push(h('div', { class: 'market-row' }, h('div', { class: 'main' }, h('b', {}, `${ITEMS[id].name} ×${countOf(this.profile, id)}`), h('small', {}, ITEMS[id].desc)),
+        ITEMS[id].usable && h('button', { class: 'buy', onclick: () => this.useKopi() }, 'PAKAI')));
+    }
+    out.push(h('div', { class: 'section-h' }, 'Kontak'));
+    const known = NPCS.filter((n) => isVisible(this.profile, n));
+    for (const n of known) {
+      const st = npcState(this.profile, n.id), lv = levelOf(st.aff);
+      out.push(h('div', { class: 'market-row' }, h('div', { class: 'main' }, h('b', {}, `${n.name} · ${LEVEL_NAMES[lv]}`), h('small', {}, n.perks[Math.max(0, lv - 1)] && lv > 0 ? n.perks[lv - 1] : n.role))));
     }
     out.push(h('div', { class: 'section-h' }, 'Arsip (file tersimpan)'));
     if (!this.profile.archive.length) out.push(h('div', { class: 'empty' }, 'Belum ada file tersimpan.'));
@@ -807,6 +897,30 @@ export class App {
           h('b', {}, a.cmd), a.enabled ? h('span', {}, '▸') : h('small', { class: 'reason' }, a.reason)));
       }
       sheet.append(h('button', { class: 'act dim', onclick: close }, 'TUTUP'));
+    } else if (o.kind === 'npc') {
+      const npc = npcById(o.id), st = npcState(this.profile, o.id), lv = levelOf(st.aff);
+      sheet.append(h('h2', {}, npc.name),
+        h('p', { style: 'color:var(--muted);font-size:13px;margin:4px 0 10px' }, `${npc.role} · ${LEVEL_NAMES[lv]}${lv < AFF_STEPS.length - 1 ? ` (${st.aff}/${AFF_STEPS[lv + 1]})` : ''}`),
+        h('div', { class: 'rankbar' }, h('i', { style: `width:${Math.round(levelProgress(st.aff) * 100)}%` })),
+        h('div', { class: 'npc-line' }, `“${o.line || npc.lines[lv][0]}”`),
+        h('button', { class: 'jackin' + (canTalk(this.profile, o.id) ? '' : ' off'), onclick: () => this.doTalk(o.id) },
+          canTalk(this.profile, o.id) ? '▸ NGOBROL · ⚡2' : 'Sudah ngobrol hari ini'),
+        h('button', { class: 'act' + (canGift(this.profile, o.id) ? '' : ' dim'), onclick: () => {
+          if (!canGift(this.profile, o.id)) return this.toast('Sudah memberi hadiah hari ini.');
+          this.overlay = { kind: 'gift', id: o.id }; this.render(); } }, canGift(this.profile, o.id) ? 'BERI HADIAH' : 'Sudah memberi hadiah hari ini'),
+        h('div', { class: 'section-h', style: 'margin-top:14px' }, 'Keuntungan'),
+        ...npc.perks.map((t, i) => h('div', { class: 'perk' + (lv > i ? ' on' : '') }, h('b', {}, LEVEL_NAMES[i + 1]), h('span', {}, t))),
+        h('button', { class: 'act dim', onclick: close }, 'TUTUP'));
+    } else if (o.kind === 'gift') {
+      const npc = npcById(o.id);
+      sheet.append(h('h2', {}, `Hadiah untuk ${npc.name}`),
+        h('p', { style: 'color:var(--muted);font-size:12px;margin:4px 0 10px' }, `Favoritnya: ${ITEMS[npc.likes].name}`));
+      const have = Object.keys(ITEMS).filter((id) => countOf(this.profile, id) > 0);
+      if (!have.length) sheet.append(h('div', { class: 'empty' }, 'Tasmu kosong. Selesaikan misi atau kerjakan kontrak untuk dapat barang.'));
+      for (const id of have)
+        sheet.append(h('button', { class: 'opt', onclick: () => this.doGift(o.id, id) },
+          `${ITEMS[id].name} ×${countOf(this.profile, id)}`, id === npc.likes && h('small', {}, '♥ favorit')));
+      sheet.append(h('button', { class: 'act dim', onclick: () => { this.overlay = { kind: 'npc', id: o.id }; this.render(); } }, 'KEMBALI'));
     } else if (o.kind === 'safehouse') {
       const ev = perksFor(this.profile).event;
       sheet.append(h('h2', {}, 'Safehouse'),
@@ -816,6 +930,7 @@ export class App {
           h('div', { class: 'focus-top' }, h('b', {}, `Fokus ${this.profile.focus}`), h('span', { class: 'fo ' + focusState(this.profile.focus) }, FOCUS_LABEL[focusState(this.profile.focus)])),
           h('div', { class: 'rankbar' }, h('i', { style: `width:${Math.min(100, this.profile.focus)}%` })),
           h('small', {}, 'Makin lelah, aksi makin mahal dan loading makin lama. Tidur memulihkan Fokus.')),
+        ...this.supplyRows(),
         ...this.contractRows(),
         h('button', { class: 'jackin', onclick: () => this.goSleep() }, '▸ TIDUR · hari berikutnya'),
         h('button', { class: 'act dim', onclick: close }, 'TUTUP'));
@@ -896,6 +1011,8 @@ export class App {
         h('div', { class: 'file' }, o.res.text),
         h('p', { style: 'color:var(--amber)' }, `+${o.res.reward} ◆   ·   +${o.res.rep} rep`),
         o.res.unlocked.length && h('p', { style: 'color:var(--cyan)' }, 'Tool terbuka: ' + o.res.unlocked.map((t) => TOOLS[t].name).join(', ')),
+        Object.keys(o.res.items || {}).length && h('p', { style: 'color:var(--ink)' }, 'Dapat: ' + Object.entries(o.res.items).map(([id, n]) => `${ITEMS[id].name} ×${n}`).join(', ')),
+        ...(o.res.notes || []).map((t) => h('p', { style: 'color:var(--cyan);font-size:12px' }, t)),
         h('p', { style: 'color:var(--muted);font-size:12px' }, 'Klien menawarkan kontrak perawatan harian — cek di Safehouse.'),
         h('button', { class: 'act', onclick: close }, 'LANJUT'));
     }

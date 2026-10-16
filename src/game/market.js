@@ -1,6 +1,7 @@
 import { TOOLS, LOAD_MS } from './profile.js';
 import { siteById } from '../sites/index.js';
 import { WORLD_NODES } from './world.js';
+import { perksFor } from './perks.js';
 
 // Black-market catalog. Effects are applied to the persistent profile.
 export const MARKET = [
@@ -30,6 +31,14 @@ export const MARKET = [
     desc: 'Buka TOOLS, RUN, QUEUE, SCRIPT. (segera hadir)' }
 ];
 
+// Price after Dimas / Rani / Mbah Gun perks and today's market event.
+export function priceFor(profile, item) {
+  const p = perksFor(profile);
+  const kindDisc = item.kind === 'speed' ? p.speedDiscount : item.kind === 'intel' ? p.intelDiscount : p.cmdDiscount;
+  const disc = Math.min(0.6, kindDisc + p.marketDiscount);
+  return Math.max(1, Math.round(item.cost * (1 - disc)));
+}
+
 export function owned(profile, item) {
   if (item.kind === 'tool') return !!profile.tools[item.tool];
   if (item.kind === 'intel') return !!profile.intel[item.site];
@@ -44,7 +53,7 @@ export function canBuy(profile, item) {
     const dep = MARKET.find((m) => m.id === item.needs);
     return { ok: false, reason: `Butuh "${dep?.name}" dulu.` };
   }
-  if (profile.credits < item.cost) return { ok: false, reason: 'Kredit tidak cukup.' };
+  if (profile.credits < priceFor(profile, item)) return { ok: false, reason: 'Kredit tidak cukup.' };
   return { ok: true };
 }
 
@@ -53,7 +62,7 @@ export function buy(profile, itemId) {
   if (!item) return { ok: false, msg: 'Item tidak ada.' };
   const c = canBuy(profile, item);
   if (!c.ok) return { ok: false, msg: c.reason };
-  profile.credits -= item.cost;
+  profile.credits -= priceFor(profile, item);
   profile.bought.push(item.id);
   if (item.kind === 'tool') profile.tools[item.tool] = true;
   else if (item.kind === 'speed') profile.speed = item.level;

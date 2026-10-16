@@ -352,8 +352,8 @@ export function finish(ctx, endingId, opts = {}) {
   const e = mission.endings.find((x) => x.id === endingId);
   run.ended = endingId;
   const first = !profile.cleared[mission.id];
-  const reward = first ? e.reward : Math.round(e.reward / 4);
-  const repGain = first ? (opts.repReward || 0) : Math.round((opts.repReward || 0) / 4);
+  const reward = Math.round((first ? e.reward : Math.round(e.reward / 4)) * (opts.creditMult || 1));
+  const repGain = Math.round((first ? (opts.repReward || 0) : Math.round((opts.repReward || 0) / 4)) * (opts.repMult || 1));
   profile.credits += reward;
   profile.rep += repGain;
   profile.cleared[mission.id] = endingId;

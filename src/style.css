@@ -428,3 +428,13 @@ button:active:not(:disabled):not(.node):not(.site-pin) { transform: scale(0.97);
 .node.safehouse .nm .ic-svg { color: var(--amber); }
 .node.safehouse { border-color: rgba(240,194,74,0.5); }
 .node .st.due { color: var(--amber); }
+
+/* NPC */
+.node.npc .nm .ic-svg { color: var(--cyan); }
+.node.npc { border-color: rgba(120,200,230,0.4); }
+.npc-line { margin: 12px 0; padding: 12px 14px; border-left: 3px solid var(--cyan); background: var(--bg); border-radius: 0 10px 10px 0; font-size: 13px; line-height: 1.55; color: var(--ink); font-style: italic; }
+.perk { display: flex; gap: 10px; padding: 7px 0; font-size: 12px; color: var(--faint); border-bottom: 1px solid var(--line-soft); }
+.perk b { flex: none; width: 64px; font-weight: 600; }
+.perk.on { color: var(--green); }
+.market-row .buy .was { margin-right: 4px; opacity: 0.55; }
+.jackin.off { opacity: 0.45; filter: grayscale(0.6); }
