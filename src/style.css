@@ -39,7 +39,11 @@ body {
 }
 button { font: inherit; color: inherit; cursor: pointer; background: none; border: none; }
 button:disabled { cursor: not-allowed; }
-button:active:not(:disabled) { transform: scale(0.97); }
+/* press feedback — but NOT on absolutely-positioned nodes, whose own
+   translate(-50%,-50%) centering must not be overridden (doing so shifts the
+   element out from under the cursor and retargets the click). */
+button:active:not(:disabled):not(.node):not(.site-pin) { transform: scale(0.97); }
+.node:active:not(.rig-node) { filter: brightness(1.15); }
 
 /* reusable icon glyph */
 .ic-svg { display: inline-grid; place-items: center; width: 1em; height: 1em; }
@@ -151,9 +155,19 @@ button:active:not(:disabled) { transform: scale(0.97); }
 
 .pane { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 14px; }
 /* world map hub fills the screen so it reads as a game map, not a short list */
-.pane.mapfull { display: flex; flex-direction: column; overflow: hidden; }
-.pane.mapfull .worldmap { flex: 1; height: auto; min-height: 0; margin-bottom: 12px; }
-.pane.mapfull .empty { padding: 14px; }
+.pane.mapfull { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+
+/* pannable / zoomable map canvas */
+.worldmap.pan { flex: 1; height: auto; min-height: 0; position: relative; overflow: hidden; border: none; border-radius: 0; touch-action: none; cursor: grab; background: var(--bg); }
+.worldmap.pan:active { cursor: grabbing; }
+.map-inner { position: absolute; left: 0; top: 0; transform-origin: 0 0;
+  background: radial-gradient(circle at 1px 1px, var(--line-soft) 1px, transparent 0) 0 0 / 30px 30px, var(--bg); }
+.map-inner .edge { position: absolute; left: 0; top: 0; }
+.zoom-btns { position: absolute; right: 12px; bottom: 12px; z-index: 6; display: flex; flex-direction: column; gap: 8px; }
+.zoom-btn { width: 42px; height: 42px; border: 1px solid var(--green-dim); border-radius: 11px; background: rgba(5,10,8,0.82); color: var(--green); font-size: 24px; font-weight: 700; display: grid; place-items: center; }
+.zoom-btn:active { background: var(--green-ghost); }
+.map-tag { position: absolute; left: 12px; top: 12px; z-index: 6; font-size: 12px; font-weight: 700; letter-spacing: 0.5px; color: var(--green); background: rgba(5,10,8,0.75); padding: 7px 13px; border: 1px solid var(--line); border-radius: 20px; max-width: 70%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.node.node-target.live { border-color: var(--green); box-shadow: 0 0 0 3px var(--green-ghost), var(--glow-md); }
 
 /* terminal log */
 .term { background: var(--bg); display: flex; flex-direction: column; padding: 0; }

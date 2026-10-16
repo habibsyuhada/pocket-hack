@@ -10,6 +10,7 @@ import { saveProfile, loadProfile, clearProfile, buzz } from '../platform/storag
 import { iconSvg } from './icons.js';
 
 const TAB_ICON = { map: 'map', terminal: 'terminal', goals: 'target', market: 'market', profile: 'profile' };
+const MAPW = 900, MAPH = 1400, CLUSTER = 440; // big map canvas (px) + node cluster spread
 const TABS = [['map', 'Peta'], ['terminal', 'Terminal'], ['goals', 'Goals'], ['market', 'Pasar'], ['profile', 'Profil']];
 
 export class App {
@@ -23,6 +24,8 @@ export class App {
     this.showHint = false;
     this.overlay = null;
     this.intro = false;
+    this.mapView = null;             // { x, y, scale } pan/zoom, lazily centered
+    this._dragged = false;
   }
 
   async boot() {
@@ -41,6 +44,7 @@ export class App {
     if (!site) return;
     this.profile.discovered[siteId] = true;
     this.ctx = { mission: site, run: newRun(site), profile: this.profile };
+    this.mapView = null;
     for (const id of site.entry) { const d = this.ctx.run.devices[id]; if (d) d.discovered = true; }
     this.view = 'map';
     this.sel = { type: 'rig' };
@@ -52,6 +56,7 @@ export class App {
 
   jackOut() {
     this.ctx = null;
+    this.mapView = null;
     this.view = 'map';
     this.overlay = null;
     this.persist();
@@ -174,6 +179,7 @@ export class App {
     el.append(this.dock());
     if (this.overlay) el.append(this.vOverlay());
     this.root.replaceChildren(el);
+    if (this.view === 'map') this.setupMap();
   }
 
   // ---------- intro ----------
@@ -243,77 +249,172 @@ export class App {
   }
 
   // ===== unified map: city targets + (when jacked in) network nodes =====
-  // Every map entity — a city target or a network device — is one `.node`
-  // card so the map reads as a single connected graph (no mixed formats).
-  nodeCard({ cls, x, y, icon, title, sub, st, stCls, onclick }) {
+  // One `.node` card in map-pixel coords; onclick is suppressed after a drag.
+  nodeCardPx({ cls, cx, cy, icon, title, sub, st, stCls, onclick }) {
     const h = this.h.bind(this);
-    return h('button', { class: 'node ' + cls, style: `left:${x}%;top:${y}%`, onclick },
+    return h('button', { class: 'node ' + cls, style: `left:${cx}px;top:${cy}px`,
+      onclick: (e) => { if (this._dragged) { e.preventDefault(); return; } onclick(); } },
       h('div', { class: 'nm' }, this.ic(icon), title),
       sub && h('div', { class: 'ad' }, sub),
       st && h('div', { class: 'st ' + (stCls || '') }, st));
   }
 
+  // One big pannable/zoomable canvas showing every target AND, for the active
+  // target, its network nodes clustered around it — all on the same map.
   paneMap() {
     const h = this.h.bind(this);
-    const map = h('div', { class: 'worldmap' });
-
-    if (!this.ctx) {
-      // ----- city map: targets as node cards -----
-      for (const n of worldNodes(this.profile)) {
-        const locked = n.state === 'locked';
-        const cleared = n.state === 'cleared';
-        map.append(this.nodeCard({
-          cls: 'node-target' + (locked ? ' off' : '') + (cleared ? ' done' : ''),
-          x: n.x, y: n.y, icon: 'target',
-          title: locked ? '???' : n.site.title,
-          sub: locked ? 'sinyal lemah' : n.district,
-          st: locked ? 'TERKUNCI' : cleared ? 'SELESAI' : DIFF_LABEL[n.difficulty],
-          stCls: cleared ? 'a' : '',
-          onclick: () => {
-            if (locked) { alert('Sinyal lemah. Naikkan reputasi atau beli intel untuk membuka lokasi ini.'); return; }
-            this.overlay = { kind: 'site', id: n.id }; this.render();
-          }
-        }));
-      }
-      return [h('div', { class: 'section-h' }, 'Peta Kota — pilih target'), map];
-    }
-
-    // ----- network map: the target's nodes as a connected graph -----
-    const run = this.ctx.run;
-    const devs = Object.values(run.devices).filter((d) => d.discovered);
+    const inner = h('div', { class: 'map-inner', style: `width:${MAPW}px;height:${MAPH}px` });
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('class', 'edge');
-    const line = (x1, y1, x2, y2, dashed) => {
+    svg.setAttribute('class', 'edge'); svg.setAttribute('width', MAPW); svg.setAttribute('height', MAPH);
+    const line = (a, b, dashed) => {
       const ln = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      ln.setAttribute('x1', x1 + '%'); ln.setAttribute('y1', y1 + '%');
-      ln.setAttribute('x2', x2 + '%'); ln.setAttribute('y2', y2 + '%');
-      if (dashed) ln.setAttribute('stroke-dasharray', '3 4');
+      ln.setAttribute('x1', a.x); ln.setAttribute('y1', a.y); ln.setAttribute('x2', b.x); ln.setAttribute('y2', b.y);
+      if (dashed) ln.setAttribute('stroke-dasharray', '4 6');
       svg.append(ln);
     };
-    for (const d of devs) for (const l of d.links || []) {
-      const t = run.devices[l];
-      if (t?.discovered) line(d.x, d.y, t.x, t.y);
-    }
-    // link the rig origin to each entry device so the graph is connected
-    for (const id of this.ctx.mission.entry) { const d = run.devices[id]; if (d?.discovered) line(50, 95, d.x, d.y, true); }
-    map.append(svg);
+    inner.append(svg);
 
-    for (const d of devs) {
-      const cur = run.current === d.id;
-      map.append(this.nodeCard({
-        cls: (cur ? 'cur' : '') + (d.online ? '' : ' off'),
-        x: d.x, y: d.y, icon: d.kind, title: d.name, sub: d.addr,
-        st: d.access !== 'none' ? LEVEL_LABEL[d.access] : !d.online ? 'OFFLINE' : d.statusText || 'TERLIHAT',
-        stCls: d.access !== 'none' ? 'a' : d.online && !d.statusText ? '' : 'o',
-        onclick: () => cur ? (this.view = 'files', this.render()) : this.tapObject({ type: 'device', id: d.id })
+    const targets = worldNodes(this.profile);
+    const tpos = {};
+    for (const n of targets) tpos[n.id] = { x: (n.x / 100) * MAPW, y: (n.y / 100) * MAPH };
+    const xs = targets.map((n) => tpos[n.id].x), ys = targets.map((n) => tpos[n.id].y), pad = 90;
+    this._mapBounds = { x: Math.min(...xs) - pad, y: Math.min(...ys) - pad, w: Math.max(...xs) - Math.min(...xs) + pad * 2, h: Math.max(...ys) - Math.min(...ys) + pad * 2 };
+
+    // active target's nodes clustered around its pin
+    let dpos = null, rigPos = null, active = null;
+    if (this.ctx) {
+      active = this.ctx.mission;
+      const base = tpos[active.id] || { x: MAPW / 2, y: MAPH / 2 };
+      const run = this.ctx.run;
+      dpos = (d) => ({ x: base.x + ((d.x - 50) / 100) * CLUSTER, y: base.y + ((d.y - 50) / 100) * CLUSTER });
+      rigPos = { x: base.x, y: base.y + CLUSTER * 0.66 };
+      const devs = Object.values(run.devices).filter((d) => d.discovered);
+      for (const d of devs) for (const l of d.links || []) { const t = run.devices[l]; if (t?.discovered) line(dpos(d), dpos(t)); }
+      for (const id of active.entry) { const d = run.devices[id]; if (d?.discovered) { line(base, dpos(d), true); line(rigPos, dpos(d), true); } }
+      this._mapCenter = base;
+    } else {
+      this._mapCenter = { x: MAPW / 2, y: MAPH * 0.55 };
+    }
+
+    // target cards (always)
+    for (const n of targets) {
+      const locked = n.state === 'locked', cleared = n.state === 'cleared', isActive = active && n.id === active.id;
+      inner.append(this.nodeCardPx({
+        cls: 'node-target' + (locked ? ' off' : '') + (cleared ? ' done' : '') + (isActive ? ' live' : ''),
+        cx: tpos[n.id].x, cy: tpos[n.id].y, icon: 'target',
+        title: locked ? '???' : n.site.title,
+        sub: locked ? 'sinyal lemah' : n.district,
+        st: isActive ? 'AKTIF' : locked ? 'TERKUNCI' : cleared ? 'SELESAI' : DIFF_LABEL[n.difficulty],
+        stCls: (isActive || cleared) ? 'a' : '',
+        onclick: () => {
+          if (locked) { alert('Sinyal lemah. Naikkan reputasi atau beli intel untuk membuka lokasi ini.'); return; }
+          if (isActive) { this.view = 'goals'; this.render(); return; }
+          this.overlay = { kind: 'site', id: n.id }; this.render();
+        }
       }));
     }
-    map.append(this.nodeCard({ cls: 'rig-node', x: 50, y: 95, icon: 'rig', title: 'RIG', sub: 'ketuk: SCAN',
-      onclick: () => this.tapObject({ type: 'rig' }) }));
 
-    const out = [h('div', { class: 'section-h' }, `${this.ctx.mission.code} · ${this.ctx.mission.title}`), map,
-      h('div', { class: 'map-hint' }, 'Ketuk RIG untuk SCAN · node untuk aksi · node terhubung buka File')];
-    return out;
+    // active target's device nodes + rig
+    if (this.ctx) {
+      const run = this.ctx.run;
+      for (const d of Object.values(run.devices).filter((x) => x.discovered)) {
+        const cur = run.current === d.id;
+        const p = dpos(d);
+        inner.append(this.nodeCardPx({
+          cls: (cur ? 'cur' : '') + (d.online ? '' : ' off'),
+          cx: p.x, cy: p.y, icon: d.kind, title: d.name, sub: d.addr,
+          st: d.access !== 'none' ? LEVEL_LABEL[d.access] : !d.online ? 'OFFLINE' : d.statusText || 'TERLIHAT',
+          stCls: d.access !== 'none' ? 'a' : d.online && !d.statusText ? '' : 'o',
+          onclick: () => cur ? (this.view = 'files', this.render()) : this.tapObject({ type: 'device', id: d.id })
+        }));
+      }
+      inner.append(this.nodeCardPx({ cls: 'rig-node', cx: rigPos.x, cy: rigPos.y, icon: 'rig', title: 'RIG', sub: 'ketuk: SCAN',
+        onclick: () => this.tapObject({ type: 'rig' }) }));
+    }
+
+    const vp = h('div', { class: 'worldmap pan' }, inner,
+      h('div', { class: 'zoom-btns' },
+        h('button', { class: 'zoom-btn', onclick: () => this.zoomBy(1.25) }, '+'),
+        h('button', { class: 'zoom-btn', onclick: () => this.zoomBy(0.8) }, '−')),
+      h('div', { class: 'map-tag' }, this.ctx ? `${this.ctx.mission.code} · ${this.ctx.mission.title}` : `◉ ${CITY.name}`));
+    return [vp];
+  }
+
+  applyMapT(inner) {
+    if (inner && this.mapView) inner.style.transform = `translate(${this.mapView.x}px,${this.mapView.y}px) scale(${this.mapView.scale})`;
+  }
+
+  zoomBy(f) {
+    const vp = this.root.querySelector('.worldmap.pan'); if (!vp || !this.mapView) return;
+    const r = vp.getBoundingClientRect();
+    const mx = r.width / 2, my = r.height / 2;
+    const wx = (mx - this.mapView.x) / this.mapView.scale, wy = (my - this.mapView.y) / this.mapView.scale;
+    this.mapView.scale = Math.max(0.45, Math.min(1.8, this.mapView.scale * f));
+    this.mapView.x = mx - wx * this.mapView.scale; this.mapView.y = my - wy * this.mapView.scale;
+    this.applyMapT(vp.querySelector('.map-inner'));
+  }
+
+  setupMap() {
+    const vp = this.root.querySelector('.worldmap.pan'); if (!vp) return;
+    const inner = vp.querySelector('.map-inner');
+    if (!this.mapView) {
+      const r = vp.getBoundingClientRect();
+      if (this.ctx) {
+        const s = 0.95, c = this._mapCenter || { x: MAPW / 2, y: MAPH / 2 };
+        this.mapView = { scale: s, x: r.width / 2 - c.x * s, y: r.height / 2 - c.y * s };
+      } else {
+        const bnd = this._mapBounds || { x: 0, y: 0, w: MAPW, h: MAPH };
+        const s = Math.max(0.45, Math.min(1.15, Math.min((r.width - 20) / bnd.w, (r.height - 20) / bnd.h)));
+        const cx = bnd.x + bnd.w / 2, cy = bnd.y + bnd.h / 2;
+        this.mapView = { scale: s, x: r.width / 2 - cx * s, y: r.height / 2 - cy * s };
+      }
+    }
+    this.applyMapT(inner);
+    this.bindPanZoom(vp, inner);
+  }
+
+  bindPanZoom(vp, inner) {
+    const pts = new Map(); let st = null;
+    const clampScale = (s) => Math.max(0.45, Math.min(1.8, s));
+    const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+    const apply = () => this.applyMapT(inner);
+    vp.addEventListener('pointerdown', (e) => {
+      // never interfere with a press that starts on a node/button
+      if (e.target.closest('.node, .zoom-btn')) return;
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      this._dragged = false;
+      if (pts.size === 2) {
+        const a = [...pts.values()]; const r = vp.getBoundingClientRect();
+        st = { pinch: true, dist: dist(a[0], a[1]), scale: this.mapView.scale, mx: (a[0].x + a[1].x) / 2 - r.left, my: (a[0].y + a[1].y) / 2 - r.top, vx: this.mapView.x, vy: this.mapView.y };
+      } else {
+        st = { pan: true, x: e.clientX, y: e.clientY, vx: this.mapView.x, vy: this.mapView.y };
+        try { vp.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+      }
+    });
+    vp.addEventListener('pointermove', (e) => {
+      if (!pts.has(e.pointerId)) return;
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pts.size === 1 && st?.pan) {
+        const dx = e.clientX - st.x, dy = e.clientY - st.y;
+        if (Math.hypot(dx, dy) > 6) this._dragged = true;
+        this.mapView.x = st.vx + dx; this.mapView.y = st.vy + dy; apply();
+      } else if (pts.size >= 2 && st?.pinch) {
+        const a = [...pts.values()]; const ns = clampScale(st.scale * dist(a[0], a[1]) / st.dist);
+        const wx = (st.mx - st.vx) / st.scale, wy = (st.my - st.vy) / st.scale;
+        this.mapView.scale = ns; this.mapView.x = st.mx - wx * ns; this.mapView.y = st.my - wy * ns;
+        this._dragged = true; apply();
+      }
+    });
+    const end = (e) => { pts.delete(e.pointerId); st = null; if (pts.size === 1) { const a = [...pts.values()][0]; st = { pan: true, x: a.x, y: a.y, vx: this.mapView.x, vy: this.mapView.y }; } };
+    vp.addEventListener('pointerup', end);
+    vp.addEventListener('pointercancel', end);
+    vp.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const r = vp.getBoundingClientRect(); const mx = e.clientX - r.left, my = e.clientY - r.top;
+      const wx = (mx - this.mapView.x) / this.mapView.scale, wy = (my - this.mapView.y) / this.mapView.scale;
+      this.mapView.scale = clampScale(this.mapView.scale * (e.deltaY < 0 ? 1.12 : 0.89));
+      this.mapView.x = mx - wx * this.mapView.scale; this.mapView.y = my - wy * this.mapView.scale; apply();
+    }, { passive: false });
   }
 
   paneMarket() {
