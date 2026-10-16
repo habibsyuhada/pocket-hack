@@ -6,7 +6,9 @@ import { MARKET, buy, canBuy, owned } from '../game/market.js';
 import { rankFor, nextRank, rankProgress } from '../game/progression.js';
 import { saveProfile, loadProfile, clearProfile, buzz } from '../platform/storage.js';
 
-const KIND_ICON = { Router: '📶', Printer: '🖨️', Gateway: '🚪', Workstation: '💻', Server: '🗄️', NAS: '💾' };
+import { iconSvg } from './icons.js';
+
+const TAB_ICON = { map: 'map', jobs: 'jobs', market: 'market', profile: 'profile', net: 'node', term: 'terminal', obj: 'target', files: 'file', sys: 'system', _exitMission: 'exit', _exitNode: 'exit' };
 
 export class App {
   constructor(root) {
@@ -120,6 +122,8 @@ export class App {
   resetGame() { this.profile = newProfile(); clearProfile(); this.ctx = null; this.intro = true; this.render(); }
 
   // ---------- DOM helper ----------
+  ic(name) { return this.h('span', { class: 'ic-svg', html: iconSvg(name) }); }
+
   h(tag, props = {}, ...kids) {
     const e = document.createElement(tag);
     for (const [k, v] of Object.entries(props)) {
@@ -137,7 +141,8 @@ export class App {
     const el = this.h('div', { class: 'screen' });
     if (this.intro) { el.append(this.vIntro()); this.root.replaceChildren(el); return; }
     el.append(this.statusStrip());
-    const pane = this.h('div', { class: 'pane' + (this.curTab() === 'term' ? ' term' : '') });
+    const mapfull = this.scene === 'world' && this.worldTab === 'map';
+    const pane = this.h('div', { class: 'pane' + (this.curTab() === 'term' ? ' term' : '') + (mapfull ? ' mapfull' : '') });
     pane.append(...this.currentPane());
     el.append(pane);
     if (this.showHint && this.ctx) el.append(this.h('div', { class: 'hint' }, '💡 ', hint(this.ctx)));
@@ -168,14 +173,14 @@ export class App {
       return h('div', { class: 'statusbar' },
         h('span', { class: 'loc' }, '◉ ', CITY.name.toUpperCase()),
         h('span', { class: 'spacer' }),
-        h('span', { class: 'cr' }, '◈ ', String(this.profile.credits)),
+        h('span', { class: 'cr' }, '◆ ', String(this.profile.credits)),
         h('span', { class: 'rk' }, rank.name));
     }
     const site = this.ctx.mission;
     if (this.scene === 'net') {
       const node = nodeFor(site.id);
       return h('div', { class: 'statusbar' },
-        h('button', { class: 'back', title: 'Jack out', onclick: () => this.jackOut() }, '‹'),
+        h('button', { class: 'back', title: 'Jack out', onclick: () => this.jackOut() }, this.ic('back')),
         h('span', { class: 'loc' }, site.code, ' ', site.title),
         h('span', { class: 'spacer' }),
         h('span', { class: 'df' }, DIFF_LABEL[node?.difficulty || 1]),
@@ -183,7 +188,7 @@ export class App {
     }
     const d = device(this.ctx.run, this.ctx.run.current);
     return h('div', { class: 'statusbar' },
-      h('button', { class: 'back', onclick: () => this.runCommand('DISCONNECT', { type: 'rig' }) }, '‹'),
+      h('button', { class: 'back', onclick: () => this.runCommand('DISCONNECT', { type: 'rig' }) }, this.ic('back')),
       h('span', { class: 'loc' }, d.name),
       h('span', { class: 'addr' }, d.addr),
       h('span', { class: 'spacer' }),
@@ -192,7 +197,7 @@ export class App {
   }
 
   hintBtn() {
-    return this.h('button', { class: 'hintbtn' + (this.showHint ? ' on' : ''), onclick: () => { this.showHint = !this.showHint; this.render(); } }, '💡');
+    return this.h('button', { class: 'hintbtn' + (this.showHint ? ' on' : ''), onclick: () => { this.showHint = !this.showHint; this.render(); } }, this.ic('hint'));
   }
 
   // ---------- panes ----------
@@ -225,7 +230,7 @@ export class App {
         h('span', { class: 'pin-dot' }, n.state === 'cleared' ? '✓' : n.state === 'locked' ? '?' : '◉'),
         h('span', { class: 'pin-nm' }, n.state === 'locked' ? '???' : n.site.title)));
     }
-    const out = [h('div', { class: 'section-h' }, 'Peta Kota — pilih target lalu JACK IN'), map];
+    const out = [h('div', { class: 'section-h' }, 'Peta Kota'), map];
     const n = this.selSite ? nodeFor(this.selSite) : null;
     if (n) {
       const st = nodeState(this.profile, n.id);
@@ -235,7 +240,7 @@ export class App {
         h('p', {}, n.short),
         h('div', { class: 'foot' },
           st === 'cleared' && h('span', { class: 'badge' }, '✓ selesai'),
-          h('span', { class: 'reward' }, `+${n.site.reward} ◈ · +${n.repReward} rep`)),
+          h('span', { class: 'reward' }, `+${n.site.reward} ◆ · +${n.repReward} rep`)),
         h('button', { class: 'jackin', onclick: () => this.jackIn(n.id) }, '▸ JACK IN')));
     } else {
       out.push(h('div', { class: 'empty' }, 'Ketuk sebuah pin di peta untuk melihat targetnya.'));
@@ -254,14 +259,14 @@ export class App {
         h('p', {}, j.brief),
         h('div', { class: 'foot' },
           j.done && h('span', { class: 'badge' }, '✓ selesai'),
-          h('span', { class: 'reward' }, `+${j.reward} ◈ · +${j.repReward} rep`))));
+          h('span', { class: 'reward' }, `+${j.reward} ◆ · +${j.repReward} rep`))));
     }
     return out;
   }
 
   paneMarket() {
     const h = this.h.bind(this);
-    const out = [h('div', { class: 'section-h' }, `Pasar Gelap · ◈ ${this.profile.credits}`)];
+    const out = [h('div', { class: 'section-h' }, `Pasar Gelap · ◆ ${this.profile.credits}`)];
     for (const item of MARKET) {
       const have = owned(this.profile, item);
       const c = canBuy(this.profile, item);
@@ -269,7 +274,7 @@ export class App {
         h('div', { class: 'main' }, h('b', {}, item.name), h('small', {}, item.desc)),
         have
           ? h('span', { class: 'tag-r', style: 'color:var(--green)' }, 'DIMILIKI')
-          : h('button', { class: 'buy' + (c.ok ? '' : ' off'), onclick: () => c.ok ? this.doBuy(item.id) : alert(c.reason) }, `◈ ${item.cost}`)));
+          : h('button', { class: 'buy' + (c.ok ? '' : ' off'), onclick: () => c.ok ? this.doBuy(item.id) : alert(c.reason) }, `◆ ${item.cost}`)));
     }
     return out;
   }
@@ -302,7 +307,7 @@ export class App {
     if (!this.profile.archive.length) out.push(h('div', { class: 'empty' }, 'Belum ada file tersimpan.'));
     for (const f of this.profile.archive) {
       out.push(h('button', { class: 'obj', onclick: () => { this.overlay = { kind: 'read', sheet: { title: f.name, content: f.content } }; this.render(); } },
-        h('div', { class: 'ic' }, '📄'), h('div', { class: 'main' }, h('b', {}, f.name))));
+        h('div', { class: 'ic' }, this.ic('doc')), h('div', { class: 'main' }, h('b', {}, f.name))));
     }
     out.push(h('button', { class: 'linklike', onclick: () => confirm('Hapus semua progres?') && this.resetGame() }, 'reset progres'));
     return out;
@@ -329,13 +334,13 @@ export class App {
       const cur = run.current === d.id;
       map.append(h('button', { class: 'node' + (cur ? ' cur' : '') + (d.online ? '' : ' off'), style: `left:${d.x}%;top:${d.y}%`,
         onclick: () => this.tapObject({ type: 'device', id: d.id }) },
-        h('div', { class: 'nm' }, (KIND_ICON[d.kind] || '🔌') + ' ' + d.name),
+        h('div', { class: 'nm' }, this.ic(d.kind), d.name),
         h('div', { class: 'ad' }, d.addr),
         h('div', { class: 'st ' + (d.access !== 'none' ? 'a' : d.online && !d.statusText ? '' : 'o') },
           d.access !== 'none' ? LEVEL_LABEL[d.access] : !d.online ? 'OFFLINE' : d.statusText || 'TERLIHAT')));
     }
     const rigCard = h('button', { class: 'devhead rig', onclick: () => this.tapObject({ type: 'rig' }) },
-      h('div', { class: 'ic' }, '📟'),
+      h('div', { class: 'ic' }, this.ic('rig')),
       h('div', { class: 'main' }, h('b', {}, 'Rig lokal'), h('small', {}, 'ketuk untuk SCAN jaringan')),
       h('div', { class: 'tag-r', style: 'color:var(--green)' }, 'SCAN'));
     const out = [rigCard, map];
@@ -344,7 +349,7 @@ export class App {
     for (const d of devs) {
       const cur = run.current === d.id;
       out.push(h('button', { class: 'obj', onclick: () => this.tapObject({ type: 'device', id: d.id }) },
-        h('div', { class: 'ic' }, KIND_ICON[d.kind] || '🔌'),
+        h('div', { class: 'ic' }, this.ic(d.kind)),
         h('div', { class: 'main' }, h('b', {}, d.name), h('small', {}, `${d.kind} · ${d.addr}`)),
         h('div', { class: 'tag-r' }, cur ? 'TERHUBUNG' : d.access !== 'none' ? LEVEL_LABEL[d.access] : '')));
     }
@@ -371,7 +376,7 @@ export class App {
         const cr = first ? e.reward : Math.round(e.reward / 4);
         out.push(h('button', { class: 'card', disabled: !e.available, onclick: () => e.available && this.submitSite(e.id) },
           h('h3', {}, e.label),
-          h('div', { class: 'foot' }, h('span', { class: 'reward' }, `+${cr} ◈ · +${first ? (node?.repReward || 0) : Math.round((node?.repReward || 0) / 4)} rep`))));
+          h('div', { class: 'foot' }, h('span', { class: 'reward' }, `+${cr} ◆ · +${first ? (node?.repReward || 0) : Math.round((node?.repReward || 0) / 4)} rep`))));
       }
     }
     return out;
@@ -384,7 +389,7 @@ export class App {
     const acts = getActions(this.ctx, { type: 'device', id: d.id }).filter((a) => a.cmd !== 'CONNECT');
     const extra = acts.filter((a) => !['INSPECT'].includes(a.cmd)).map((a) => a.cmd);
     return h('button', { class: 'devhead', onclick: () => this.tapObject({ type: 'device', id: d.id }) },
-      h('div', { class: 'ic' }, KIND_ICON[d.kind] || '🔌'),
+      h('div', { class: 'ic' }, this.ic(d.kind)),
       h('div', { class: 'main' },
         h('b', {}, d.name),
         h('small', {}, extra.length ? 'perintah: ' + extra.join(' · ') : 'INSPECT perangkat')),
@@ -401,16 +406,16 @@ export class App {
     for (const f of files) {
       out.push(h('button', { class: 'obj' + (f.corrupt || f.deleted || f.encrypted ? ' locked' : ''),
         onclick: () => this.tapObject({ type: 'file', device: d.id, id: f.id }) },
-        h('div', { class: 'ic' }, '📄'),
+        h('div', { class: 'ic' }, this.ic('doc')),
         h('div', { class: 'main' }, h('b', {}, f.name),
           h('small', {}, f.deleted ? 'terhapus' : f.corrupt ? 'rusak' : f.encrypted ? 'terenkripsi' : run.read.includes(f.id) ? 'sudah dibaca' : 'belum dibaca')),
         h('div', { class: 'tag-r', style: f.noDownload ? 'color:var(--faint)' : 'color:var(--green-dim)' }, f.noDownload ? 'sistem' : '⬇')));
     }
-    out.push(h('div', { class: 'section-h' }, `💾 Salinan lokal · ${run.local.length}/${LOCAL_CAP}`));
+    out.push(h('div', { class: 'section-h' }, `Salinan lokal · ${run.local.length}/${LOCAL_CAP}`));
     if (!run.local.length) out.push(h('div', { class: 'empty' }, 'Belum ada file yang diunduh.\nPenyimpanan rig terbatas — pilih yang penting.'));
     for (const f of run.local) {
       out.push(h('button', { class: 'obj', onclick: () => this.tapObject({ type: 'file', local: true, id: f.id }) },
-        h('div', { class: 'ic' }, '💾'),
+        h('div', { class: 'ic' }, this.ic('doc')),
         h('div', { class: 'main' }, h('b', {}, f.name), h('small', {}, f.encrypted ? 'terenkripsi' : 'siap dibaca')),
         h('div', { class: 'tag-r' }, 'ketuk: hapus/baca')));
     }
@@ -421,19 +426,19 @@ export class App {
     const h = this.h.bind(this);
     const d = device(this.ctx.run, this.ctx.run.current);
     const out = [this.deviceHeader()];
-    out.push(h('div', { class: 'section-h' }, '⚙️ Proses & Layanan'));
+    out.push(h('div', { class: 'section-h' }, 'Proses & Layanan'));
     if (!d.procs?.length) out.push(h('div', { class: 'empty' }, 'Tidak ada proses pada perangkat ini.'));
     for (const p of d.procs || []) {
       out.push(h('button', { class: 'obj', onclick: () => this.tapObject({ type: 'proc', device: d.id, id: p.id }) },
-        h('div', { class: 'ic' }, '⚙️'),
+        h('div', { class: 'ic' }, this.ic('proc')),
         h('div', { class: 'main' }, h('b', {}, p.name), h('small', {}, p.desc)),
         h('div', { class: 'tag-r', style: p.running ? 'color:var(--green)' : 'color:var(--muted)' }, p.running ? 'RUN' : 'STOP')));
     }
     if (d.controls?.length) {
-      out.push(h('div', { class: 'section-h' }, '🎛️ Kontrol Perangkat'));
+      out.push(h('div', { class: 'section-h' }, 'Kontrol Perangkat'));
       for (const c of d.controls) {
         out.push(h('button', { class: 'obj', onclick: () => this.tapObject({ type: 'control', device: d.id, id: c.id }) },
-          h('div', { class: 'ic' }, '🎛️'),
+          h('div', { class: 'ic' }, this.ic('control')),
           h('div', { class: 'main' }, h('b', {}, c.label), h('small', {}, 'status: ' + c.state))));
       }
     }
@@ -481,10 +486,10 @@ export class App {
       this.render();
     };
     const row = h('div', { class: 'dock' });
-    for (const [id, icon, label] of tabs) {
+    for (const [id, , label] of tabs) {
       const exit = id.startsWith('_exit');
       row.append(h('button', { class: 'dock-btn' + (id === active ? ' on' : '') + (exit ? ' exit' : ''), onclick: () => onTab(id) },
-        h('span', { class: 'di' }, icon), h('span', { class: 'dl' }, label)));
+        h('span', { class: 'di' }, this.ic(TAB_ICON[id] || 'node')), h('span', { class: 'dl' }, label)));
     }
     return row;
   }
@@ -537,7 +542,7 @@ export class App {
     } else if (o.kind === 'result') {
       sheet.append(h('h2', { style: 'color:var(--green)' }, 'TARGET SELESAI'),
         h('div', { class: 'file' }, o.res.text),
-        h('p', { style: 'color:var(--amber)' }, `+${o.res.reward} ◈   ·   +${o.res.rep} rep`),
+        h('p', { style: 'color:var(--amber)' }, `+${o.res.reward} ◆   ·   +${o.res.rep} rep`),
         o.res.unlocked.length && h('p', { style: 'color:var(--cyan)' }, 'Tool terbuka: ' + o.res.unlocked.map((t) => TOOLS[t].name).join(', ')),
         h('button', { class: 'act', onclick: () => this.jackOut() }, 'KEMBALI KE KOTA'));
     }
