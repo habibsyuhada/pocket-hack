@@ -96,6 +96,11 @@ export class App {
     setTimeout(() => { this.busy = null; fn(); }, ms);
   }
 
+  // Entering the file / service server runs LS / PS behind the loading screen.
+  openPage(view, label) {
+    this.withLoading(label, () => { this.view = view; this.render(); });
+  }
+
   // ---------- commands ----------
   runCommand(cmd, target) {
     const choosers = ['LOGIN', 'CRACK', 'DECRYPT', 'COMPARE', 'CONFIG', 'CONTROL'];
@@ -160,8 +165,8 @@ export class App {
     if (!this.ctx) { alert('Pilih node di peta dulu.'); return; }
     if (k === 'scan') { if (!this.ctx) return alert('Pilih node di peta dulu.'); this.overlay = null; this.runCommand('SCAN', this.cur ? { type: 'device', id: this.cur } : { type: 'rig' }); return; }
     if (k === 'disconnect') { if (!this.cur) return alert('Belum terhubung ke node.'); this.overlay = null; this.runCommand('DISCONNECT', { type: 'rig' }); return; }
-    if (k === 'files') { if (!this.cur) return alert('CONNECT ke node dulu.'); this.overlay = null; this.view = 'files'; this.render(); return; }
-    if (k === 'system') { if (!this.cur) return alert('CONNECT ke node dulu.'); this.overlay = null; this.view = 'system'; this.render(); return; }
+    if (k === 'files') { if (!this.cur) return alert('CONNECT ke node dulu.'); this.overlay = null; this.openPage('files', 'LS'); return; }
+    if (k === 'system') { if (!this.cur) return alert('CONNECT ke node dulu.'); this.overlay = null; this.openPage('system', 'PS'); return; }
     if (k === 'controlpage') { if (!this.cur) return alert('CONNECT ke node dulu.'); this.overlay = null; this.view = 'control'; this.render(); return; }
     if (k === 'search') {
       if (!this.cur) return alert('CONNECT ke node dulu.');
