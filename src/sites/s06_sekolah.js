@@ -53,7 +53,7 @@ export default {
   ],
   hints: [
     { when: (r) => !r.read.includes('memo_reuni'), text: 'SCAN dari Hotspot Pelabuhan Timur: Printer Balai Desa menyimpan memo_reuni.txt.' },
-    { when: (r, p) => !p.tools.cipher, text: 'Butuh tool Cipher untuk DECRYPT. Selesaikan K-00 atau beli di Pasar.' },
+    { when: (r, p) => !p.tools.cipher, text: 'Butuh tool Cipher untuk DECRYPT. Selesaikan K-00 atau beli di Pasar Gelap (peta, Selatan).' },
     { when: (r) => !hasLocal(r, 'rapor'), text: 'CONNECT ke NAS Sekolah dan DOWNLOAD rapor_angkatan98.enc.' },
     { when: (r) => !opened(r), text: 'Pilih berkas lokal rapor_angkatan98.enc lalu DECRYPT dengan SMP98ALUMNI.' },
     { when: (r) => !r.read.includes('pengumuman_balai'), text: 'Bonus: baca pengumuman_balai.txt di Printer Balai Desa.' }

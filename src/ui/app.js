@@ -6,21 +6,21 @@ import { hasCmd, loadMs } from '../game/profile.js';
 import { DEFAULT_CMDS } from '../engine/commands.js';
 import { CITY as CITY_INFO, WORLD_NODES, DIFF_LABEL, nodeFor, worldNodes, isAccepted, offersFrom, waitingOn } from '../game/world.js';
 import { CITY as NET, START_NODES, CITY_VERSION, DISTRICTS } from '../city/index.js';
-import { MAPW, MAPH, cellXY, SAFEHOUSE_CELL } from '../city/layout.js';
+import { MAPW, MAPH, cellXY, SAFEHOUSE_CELL, MARKET_CELL } from '../city/layout.js';
 import { greetingFor, talkSceneFor, offerSceneFor, noOfferLine, giftLines, turnInSceneFor, thanksLine } from '../game/dialogues.js';
 import { readyFrom, endingsFor, awaitingTurnIn } from '../game/turnin.js';
 import { PLACEHOLDER, portraitSrc } from './portraits.js';
 import { MARKET, buy, canBuy, owned, priceFor } from '../game/market.js';
 import { ITEMS, KOPI_FOCUS, KOPI_PRICE, MISSION_ITEMS, addItem, addAll, removeItem, countOf, contractDrop } from '../game/items.js';
-import { NPCS, LEVEL_NAMES, AFF_STEPS, npcById, npcState, npcLevel, levelOf, levelProgress, isVisible, npcSpot, canTalk, canGift, talk, gift, missionBond } from '../game/npc.js';
-import { eventFor, focusCostFor, restoreFocus, loadingMult, spendFocus, startSleep, sleepPlan, sleepProgress, finishSleep, wakeEarly, fmtGameTime, fmtClock, focusState, FOCUS_LABEL, seasonName } from '../game/time.js';
+import { NPCS, LEVEL_NAMES, AFF_STEPS, npcById, npcState, npcLevel, levelOf, levelProgress, isVisible, npcSpot, canTalk, canGift, talkWait, giftWait, talk, gift, missionBond } from '../game/npc.js';
+import { eventFor, focusCostFor, restoreFocus, loadingMult, spendFocus, startSleep, sleepPlan, sleepProgress, finishSleep, wakeEarly, fmtGameTime, fmtClock, fmtDate, fmtDateShort, dayIndex, syncDay, focusState, FOCUS_LABEL, seasonName } from '../game/time.js';
 import { perksFor } from '../game/perks.js';
 import { canContract, startContract, hasContract, pendingDays, payout, collect } from '../game/retainer.js';
 import { rankFor, nextRank, rankProgress } from '../game/progression.js';
 import { saveProfile, loadProfile, clearProfile, buzz } from '../platform/storage.js';
 import { iconSvg } from './icons.js';
 
-const TAB_ICON = { map: 'map', terminal: 'terminal', goals: 'target', market: 'market', profile: 'profile' };
+const TAB_ICON = { map: 'map', terminal: 'terminal', goals: 'target', profile: 'profile' };
 const MIN_SCALE = 0.25, MAX_SCALE = 1.8;
 // In-world messages when a command has nothing to act on (instead of a generic error).
 const NO_TARGET = {
@@ -40,9 +40,11 @@ const NOT_CONNECTED = {
   DISCONNECT: 'Kamu belum terhubung ke node mana pun.'
 };
 const notConnected = (cmd) => NOT_CONNECTED[cmd] || NOT_CONNECTED.DEFAULT;
+// 2520000 -> "42 mnt", 3900000 -> "1 j 5 mnt"
+const fmtWait = (ms) => { const m = Math.max(1, Math.ceil(ms / 60000)); return m >= 60 ? `${Math.floor(m / 60)} j${m % 60 ? ` ${m % 60} mnt` : ''}` : `${m} mnt`; };
 const fmtSec = (ms) => `${(ms / 1000).toFixed(1).replace('.', ',')} dtk`;
 const NODE_PAGES = ['files', 'system', 'control'];
-const TABS = [['map', 'Peta'], ['terminal', 'Terminal'], ['goals', 'Goals'], ['market', 'Pasar'], ['profile', 'Profil']];
+const TABS = [['map', 'Peta'], ['terminal', 'Terminal'], ['goals', 'Goals'], ['profile', 'Profil']];
 
 export class App {
   constructor(root) {
@@ -51,7 +53,7 @@ export class App {
     this.ctx = null;                 // { mission: city graph, run: shared run, profile }
     this.goalSite = null;            // mission shown in the Goals tab / used for hints
     this.dlg = null;                 // active dialogue scene
-    this.view = 'map';               // map | terminal | goals | market | profile | files | system
+    this.view = 'map';               // map | terminal | goals | profile | files | system | control
     this.sel = { type: 'rig' };
     this.selSite = null;
     this.showHint = false;
@@ -71,12 +73,33 @@ export class App {
       this.profile.cmds = [...new Set([...(this.profile.cmds || []), ...DEFAULT_CMDS])];
     }
     this.intro = !saved;
+    this.syncCalendar();
     this.initWorld();
     if (this.profile.sleeping) {
       const info = finishSleep(this.profile);                // slept through while the app was closed
       if (info) { this.persist(); this.overlay = { kind: 'daystart', info }; } else this.startSleepTicker();
     }
     this.render();
+    // the date is the real one: notice midnight while the app stays open
+    setInterval(() => this.checkDay(), 30000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) this.checkDay(); });
+  }
+
+  // Old saves counted days from 1; move them onto the real calendar without a free backlog.
+  syncCalendar() {
+    const p = this.profile;
+    if (p.day < 10000) {
+      p.day = dayIndex();
+      for (const r of Object.values(p.retainers || {})) r.lastDone = p.day - 1;
+    } else syncDay(p);
+  }
+
+  checkDay() {
+    if (!syncDay(this.profile)) return;
+    this.persist();
+    this.render();
+    const ev = perksFor(this.profile).event;
+    this.toast(`Hari baru: ${fmtDate(this.profile.day)}${ev ? ` · ★ ${ev.name}` : ''}`, 'hint');
   }
 
   persist() { saveProfile(this.profile); }
@@ -258,31 +281,6 @@ export class App {
     this.render();
   }
 
-  // ----- NPC actions -----
-  doTalk(id) {
-    if (!canTalk(this.profile, id)) return this.toast('Sudah ngobrol hari ini. Besok lagi.');
-    this.overlay = null;
-    this.withLoading('NGOBROL', () => {
-      const r = talk(this.profile, id, perksFor(this.profile));
-      this.persist();
-      this.overlay = { kind: 'npc', id, line: r.line };
-      this.render();
-      const msgs = [...(r.kopi ? ['+1 Kopi Susu'] : []), ...r.notes];
-      if (msgs.length) this.toast(msgs.join(' · '), 'hint');
-    }, { cost: 2, ms: 700 });
-  }
-
-  doGift(id, itemId) {
-    this.overlay = null;
-    this.withLoading('HADIAH', () => {
-      const r = gift(this.profile, id, itemId, perksFor(this.profile));
-      this.persist();
-      this.overlay = { kind: 'npc', id, line: r?.line };
-      this.render();
-      if (r?.notes.length) this.toast(r.notes.join(' · '), 'hint');
-    }, { cost: 1, ms: 600 });
-  }
-
   // Safehouse list: offers for cleared sites + today's chore for active contracts.
   contractRows() {
     const h = this.h.bind(this);
@@ -453,7 +451,7 @@ export class App {
   openCatalog() { this.overlay = { kind: 'catalog', group: null }; this.render(); }
 
   runCatalog(cmd) {
-    if (!hasCmd(this.profile, cmd)) { this.toast('Command terkunci. Beli di Pasar.'); return; }
+    if (!hasCmd(this.profile, cmd)) { this.toast('Command terkunci. Beli di Pasar Gelap (peta, Selatan).'); return; }
     const meta = CMD_META[cmd];
     const k = meta.kind;
     if (k === 'soon') { this.toast(`${cmd}: segera hadir di update berikutnya.`); return; }
@@ -606,7 +604,7 @@ export class App {
 
   dlgTalk() {
     const id = this.dlg.npc;
-    if (!canTalk(this.profile, id)) return this.toast('Sudah ngobrol hari ini. Besok lagi.');
+    if (!canTalk(this.profile, id)) return this.toast(`Baru saja ngobrol. Lagi ${fmtWait(talkWait(this.profile, id))}.`);
     this.withLoading('NGOBROL', () => {
       const st = npcState(this.profile, id);
       const scene = talkSceneFor(id, levelOf(st.aff), this.profile.day, st.aff);
@@ -637,7 +635,7 @@ export class App {
   }
 
   dlgGiftOpen() {
-    if (!canGift(this.profile, this.dlg.npc)) return this.toast('Sudah memberi hadiah hari ini.');
+    if (!canGift(this.profile, this.dlg.npc)) return this.toast(`Baru memberi hadiah. Lagi ${fmtWait(giftWait(this.profile, this.dlg.npc))}.`);
     this.dlg.mode = 'gift';
     this.dlg.key = (this._dk += 1);
     this.render();
@@ -777,8 +775,8 @@ export class App {
       const handIn = readyFrom(this.ctx, this.profile, d.npc).length;
       menu = h('div', { class: 'dlg-menu' + ready },
         handIn > 0 && h('button', { class: 'dlg-opt hot', onclick: (e) => { e.stopPropagation(); this.dlgTurnIn(); } }, 'Serahkan tugas ✓'),
-        h('button', { class: 'dlg-opt' + (talked ? ' off' : ''), onclick: (e) => { e.stopPropagation(); this.dlgTalk(); } }, talked ? 'Ngobrol (sudah hari ini)' : 'Ngobrol · ⚡2'),
-        h('button', { class: 'dlg-opt' + (gifted ? ' off' : ''), onclick: (e) => { e.stopPropagation(); this.dlgGiftOpen(); } }, gifted ? 'Beri hadiah (sudah hari ini)' : 'Beri hadiah'),
+        h('button', { class: 'dlg-opt' + (talked ? ' off' : ''), onclick: (e) => { e.stopPropagation(); this.dlgTalk(); } }, talked ? `Ngobrol · lagi ${fmtWait(talkWait(this.profile, d.npc))}` : 'Ngobrol · ⚡2'),
+        h('button', { class: 'dlg-opt' + (gifted ? ' off' : ''), onclick: (e) => { e.stopPropagation(); this.dlgGiftOpen(); } }, gifted ? `Beri hadiah · lagi ${fmtWait(giftWait(this.profile, d.npc))}` : 'Beri hadiah'),
         h('button', { class: 'dlg-opt' + (jobs ? ' hot' : ''), onclick: (e) => { e.stopPropagation(); this.dlgOffers(); } }, jobs ? 'Ada kerjaan? ★' : 'Ada kerjaan?'),
         h('button', { class: 'dlg-opt dim', onclick: (e) => { e.stopPropagation(); this.dlgClose(); } }, 'Pergi'));
     } else if (d.mode === 'choice') {
@@ -842,11 +840,11 @@ export class App {
   // ---------- status strip ----------
   statusStrip() {
     const h = this.h.bind(this);
-    if (this.view === 'map' || this.view === 'market' || this.view === 'profile') {
+    if (this.view === 'map' || this.view === 'profile') {
       return h('div', { class: 'statusbar' },
         h('span', { class: 'loc' }, '◉ ', CITY_INFO.name.toUpperCase()),
         h('span', { class: 'spacer' }),
-        h('span', { class: 'day' }, `H${this.profile.day}`),
+        h('span', { class: 'day' }, fmtDateShort(this.profile.day)),
         this.focusPill(),
         h('span', { class: 'cr' }, '◆ ', String(this.profile.credits)));
     }
@@ -895,7 +893,6 @@ export class App {
 
   // ---------- view router ----------
   viewPane() {
-    if (this.view === 'market') return this.paneMarket();
     if (this.view === 'profile') return this.paneProfile();
     if (this.view === 'map') return this.paneMap();
     if (this.view === 'terminal') return this.paneTerminal();
@@ -966,8 +963,12 @@ export class App {
     const cards = [];
     const home = cellXY(SAFEHOUSE_CELL);
     cards.push(this.personTokenPx({ cx: home.x, cy: home.y, color: '#f0c24a', icon: 'rig', kind: 'home', title: 'SAFEHOUSE',
-      sub: `Hari ${this.profile.day} · ${seasonName(this.profile.day)}`, st: 'ISTIRAHAT',
+      sub: `${fmtDateShort(this.profile.day)} · ${seasonName(this.profile.day)}`, st: 'ISTIRAHAT',
       onclick: () => { this.overlay = { kind: 'safehouse' }; this.render(); } }));
+    const shop = cellXY(MARKET_CELL);
+    cards.push(this.personTokenPx({ cx: shop.x, cy: shop.y, color: '#ff8f5a', icon: 'market', kind: 'shop', title: 'PASAR GELAP',
+      sub: 'Selatan · tool, command, upgrade', st: 'BELANJA',
+      onclick: () => { this.overlay = { kind: 'market' }; this.render(); } }));
     for (const npc of NPCS) {
       if (!isVisible(this.profile, npc)) continue;
       const pos = npcSpot(npc, this.profile.day), lv = levelOf(npcState(this.profile, npc.id).aff);
@@ -1024,7 +1025,7 @@ export class App {
         h('button', { class: 'zoom-btn small', title: 'Legenda', onclick: () => { this.overlay = { kind: 'legend' }; this.render(); } }, '?'),
         h('button', { class: 'zoom-btn', onclick: () => this.zoomBy(1.25) }, '+'),
         h('button', { class: 'zoom-btn', onclick: () => this.zoomBy(0.8) }, '−')),
-      h('div', { class: 'map-tag' }, `◉ ${CITY_INFO.name} · H${this.profile.day} · ${seasonName(this.profile.day)}`,
+      h('div', { class: 'map-tag' }, `◉ ${CITY_INFO.name} · ${fmtDateShort(this.profile.day)} · ${seasonName(this.profile.day)}`,
         perksFor(this.profile).event && h('b', { class: 'ev' }, `★ ${perksFor(this.profile).event.name}`)));
     return [vp];
   }
@@ -1140,7 +1141,7 @@ export class App {
       const ownd = this.profile.tools[t.id];
       out.push(h('div', { class: 'tool' + (ownd ? '' : ' locked') },
         h('div', { class: 'hd' }, h('b', {}, t.name), h('span', { class: 'cost' }, t.cmd)),
-        h('p', {}, ownd ? t.desc : '🔒 Beli di Pasar.')));
+        h('p', {}, ownd ? t.desc : '🔒 Beli di Pasar Gelap (peta, Selatan).')));
     }
     out.push(h('div', { class: 'section-h' }, 'Tas'));
     const bag = Object.keys(ITEMS).filter((id) => countOf(this.profile, id) > 0);
@@ -1236,7 +1237,7 @@ export class App {
     const files = visibleFiles(run, d.id);
     const out = [this.deviceHeader(), h('div', { class: 'section-h' }, `File Server · ${LEVEL_LABEL[d.access]}`),
       h('button', { class: 'obj' + (hasCmd(this.profile, 'SEARCH') ? '' : ' locked'),
-        onclick: () => { if (!hasCmd(this.profile, 'SEARCH')) return this.toast('SEARCH terkunci. Beli di Pasar.'); this.view = 'terminal'; this.runCommand('SEARCH', { type: 'device', id: d.id }); } },
+        onclick: () => { if (!hasCmd(this.profile, 'SEARCH')) return this.toast('SEARCH terkunci. Beli di Pasar Gelap (peta, Selatan).'); this.view = 'terminal'; this.runCommand('SEARCH', { type: 'device', id: d.id }); } },
         h('div', { class: 'ic' }, this.ic(hasCmd(this.profile, 'SEARCH') ? 'terminal' : 'lock')),
         h('div', { class: 'main' }, h('b', {}, 'SEARCH'), h('small', {}, 'cari kata kunci di semua file node ini')))];
     if (!files.length) out.push(h('div', { class: 'empty' }, 'Tidak ada file yang bisa diakses pada level ini.'));
@@ -1341,6 +1342,8 @@ export class App {
           h('b', {}, a.cmd), a.enabled ? h('span', {}, '▸') : h('small', { class: 'reason' }, a.reason)));
       }
       sheet.append(h('button', { class: 'act dim', onclick: close }, 'TUTUP'));
+    } else if (o.kind === 'market') {
+      sheet.append(...this.paneMarket(), h('button', { class: 'act dim', onclick: close }, 'TUTUP'));
     } else if (o.kind === 'legend') {
       const row = (sw, name, desc) => h('div', { class: 'lg-row' }, sw, h('div', {}, h('b', {}, name), h('small', {}, desc)));
       const mini = (cls, txt) => h('span', { class: 'lg-card ' + cls }, txt);
@@ -1360,6 +1363,7 @@ export class App {
         row(h('span', { class: 'lg-badge turn' }, '✓'), 'Serahkan tugas', 'Misi mereka siap diserahkan.'),
         row(h('span', { class: 'lg-badge talk' }, '●'), 'Bisa ngobrol', 'Belum ngobrol hari ini.'),
         row(tok('home', '⌂', '#f0c24a'), 'Safehouse', 'Tidur, warung kopi, kontrak.'),
+        row(tok('shop', '◆', '#ff8f5a'), 'Pasar Gelap', 'Beli tool, command, intel, dan upgrade. Ada di distrik Selatan.'),
         h('div', { class: 'section-h' }, 'Level akses'),
         h('div', { class: 'lg-lv' }, h('span', { class: 'lv-guest' }, 'TAMU'), h('span', { class: 'lv-user' }, 'USER'), h('span', { class: 'lv-admin' }, 'ADMIN')),
         h('button', { class: 'act dim', onclick: close }, 'TUTUP'));
@@ -1375,7 +1379,7 @@ export class App {
     } else if (o.kind === 'safehouse') {
       const ev = perksFor(this.profile).event;
       sheet.append(h('h2', {}, 'Safehouse'),
-        h('p', { style: 'color:var(--muted);font-size:13px;margin:4px 0 10px' }, `Hari ${this.profile.day} · Musim ${seasonName(this.profile.day)}`),
+        h('p', { style: 'color:var(--muted);font-size:13px;margin:4px 0 10px' }, `${fmtDate(this.profile.day)} · Musim ${seasonName(this.profile.day)}`),
         ev && h('div', { class: 'event-chip' }, h('b', {}, ev.name), h('small', {}, ev.desc)),
         eventFor(this.profile.day + 1) && h('p', { style: 'color:var(--muted);font-size:12px;margin:0 0 10px' }, `Besok: ★ ${eventFor(this.profile.day + 1).name}`),
         h('div', { class: 'focus-box' },
@@ -1387,12 +1391,12 @@ export class App {
         h('button', { class: 'jackin', onclick: () => this.goSleep() }, `▸ TIDUR · ${fmtGameTime(sleepPlan(this.profile, perksFor(this.profile).focusMax).minutes)} · hari berikutnya`),
         h('button', { class: 'act dim', onclick: close }, 'TUTUP'));
     } else if (o.kind === 'daystart') {
-      const i = o.info;
-      sheet.append(h('h2', {}, `Hari ${i.day}`),
-        h('p', { style: 'color:var(--muted);font-size:13px;margin:4px 0 10px' }, `Musim ${i.season} · Tidur ${fmtGameTime(i.slept)} · Fokus pulih penuh`),
-        i.event && h('div', { class: 'event-chip' }, h('b', {}, i.event.name), h('small', {}, i.event.desc)),
+      const i = o.info, ev = perksFor(this.profile).event;
+      sheet.append(h('h2', {}, 'Bangun tidur'),
+        h('p', { style: 'color:var(--muted);font-size:13px;margin:4px 0 10px' }, `${fmtDate(this.profile.day)} · Tidur ${fmtGameTime(i.slept)} · Fokus pulih penuh`),
+        ev && h('div', { class: 'event-chip' }, h('b', {}, ev.name), h('small', {}, ev.desc)),
         ...this.dueNotes(),
-        h('button', { class: 'act', onclick: close }, 'MULAI HARI'));
+        h('button', { class: 'act', onclick: close }, 'MULAI'));
     } else if (o.kind === 'confirm') {
       sheet.append(h('h2', {}, o.title), h('p', { style: 'color:var(--muted);font-size:13px;margin:6px 0 12px' }, o.text),
         h('button', { class: 'act danger', onclick: () => { this.overlay = null; o.onOk(); } }, o.okLabel),
@@ -1417,7 +1421,7 @@ export class App {
         for (const cmd of groupCommands(g.id)) {
           const locked = !hasCmd(this.profile, cmd);
           grid.append(h('button', { class: 'cat-cmd' + (locked ? ' locked' : ''), title: CMD_META[cmd].desc,
-            onclick: () => { if (locked) { this.toast('Terkunci. Beli di Pasar.'); return; } this.runCatalog(cmd); } },
+            onclick: () => { if (locked) { this.toast('Terkunci. Beli di Pasar Gelap (peta, Selatan).'); return; } this.runCatalog(cmd); } },
             h('b', {}, cmd),
             locked ? h('span', { class: 'cat-lock' }, this.ic('lock')) : h('small', {}, CMD_META[cmd].desc)));
         }

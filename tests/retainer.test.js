@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { newProfile } from '../src/game/profile.js';
-import { sleep } from '../src/game/time.js';
+import { advanceDay } from '../src/game/time.js';
 import { canContract, startContract, pendingDays, payout, collect, payPerDay, MAX_BACKLOG } from '../src/game/retainer.js';
 import { siteById } from '../src/sites/index.js';
 
@@ -35,7 +35,7 @@ describe('retainers', () => {
     expect(r.credits).toBe(payPerDay(site));
     expect(p.credits).toBe(before + r.credits);
     expect(collect(p, 's00', site)).toBeNull();
-    sleep(p);
+    advanceDay(p);
     expect(pendingDays(p, 's00')).toBe(1);
   });
 
@@ -44,7 +44,7 @@ describe('retainers', () => {
     p.cleared.s00 = 'x';
     startContract(p, 's00');
     collect(p, 's00', site);
-    for (let i = 0; i < 6; i++) sleep(p);
+    for (let i = 0; i < 6; i++) advanceDay(p);
     expect(pendingDays(p, 's00')).toBe(MAX_BACKLOG);
     expect(payout(p, 's00', site)).toBe(payPerDay(site) * MAX_BACKLOG);
   });

@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { newProfile } from '../src/game/profile.js';
-import { sleep } from '../src/game/time.js';
+import { dayIndex, weekdayOf } from '../src/game/time.js';
 import { addItem, countOf, contractDrop, MISSION_ITEMS, addAll } from '../src/game/items.js';
-import { NPCS, levelOf, talk, gift, canTalk, canGift, npcSpot, isVisible, npcLevel, missionBond, npcState } from '../src/game/npc.js';
+import { NPCS, levelOf, talk, gift, canTalk, canGift, talkWait, giftWait, TALK_COOLDOWN_MIN, GIFT_COOLDOWN_MIN, npcSpot, isVisible, npcLevel, missionBond, npcState } from '../src/game/npc.js';
 import { perksFor } from '../src/game/perks.js';
 import { MARKET, buy, priceFor } from '../src/game/market.js';
 import { finish } from '../src/engine/actions.js';
@@ -10,6 +10,7 @@ import { newRun } from '../src/engine/core.js';
 import { siteById } from '../src/sites/index.js';
 
 const item = (id) => MARKET.find((m) => m.id === id);
+const dayOn = (w) => { let d = dayIndex(); while (weekdayOf(d) !== w) d++; return d; };
 
 describe('inventory', () => {
   it('adds, counts and drops on alternate days', () => {
@@ -28,27 +29,36 @@ describe('npc friendship', () => {
     expect([0, 9, 10, 24, 25, 44, 45, 69, 70, 200].map(levelOf)).toEqual([0, 0, 1, 1, 2, 2, 3, 3, 4, 4]);
   });
 
-  it('talk once per day, resets after sleeping', () => {
+  it('talking has a time cooldown, not a daily limit', () => {
     const p = newProfile();
-    expect(canTalk(p, 'laras')).toBe(true);
-    const r = talk(p, 'laras');
+    const t0 = 10_000_000;
+    expect(canTalk(p, 'laras', t0)).toBe(true);
+    const r = talk(p, 'laras', {}, 0, t0);
     expect(r.gain).toBe(3);
-    expect(talk(p, 'laras')).toBeNull();
-    sleep(p);
-    expect(canTalk(p, 'laras')).toBe(true);
+    expect(canTalk(p, 'laras', t0 + 1000)).toBe(false);
+    expect(talk(p, 'laras', {}, 0, t0 + 1000)).toBeNull();
+    expect(talkWait(p, 'laras', t0 + 1000)).toBe(TALK_COOLDOWN_MIN * 60000 - 1000);
+    // other NPCs are not affected
+    expect(canTalk(p, 'rani', t0 + 1000)).toBe(true);
+    // after the cooldown you can talk again — even on the same calendar day
+    expect(canTalk(p, 'laras', t0 + TALK_COOLDOWN_MIN * 60000)).toBe(true);
+    expect(talk(p, 'laras', {}, 0, t0 + TALK_COOLDOWN_MIN * 60000)).not.toBeNull();
   });
 
-  it('liked gifts give more affinity and are consumed; one gift per day', () => {
+  it('liked gifts give more affinity and are consumed; gifts cool down by time', () => {
     const p = newProfile();
-    addItem(p, 'kue', 1); addItem(p, 'komponen', 1);
-    const liked = gift(p, 'laras', 'kue');
+    const t0 = 20_000_000;
+    addItem(p, 'kue', 1); addItem(p, 'komponen', 2);
+    const liked = gift(p, 'laras', 'kue', t0);
     expect(liked.liked).toBe(true);
     expect(npcState(p, 'laras').aff).toBe(8);
     expect(countOf(p, 'kue')).toBe(0);
-    expect(canGift(p, 'laras')).toBe(false);
-    expect(gift(p, 'laras', 'komponen')).toBeNull();
-    sleep(p);
-    expect(gift(p, 'dimas', 'komponen').liked).toBe(true);
+    expect(canGift(p, 'laras', t0 + 1000)).toBe(false);
+    expect(gift(p, 'laras', 'komponen', t0 + 1000)).toBeNull();
+    expect(countOf(p, 'komponen')).toBe(2);                    // refused gifts are not consumed
+    expect(giftWait(p, 'laras', t0 + 1000)).toBe(GIFT_COOLDOWN_MIN * 60000 - 1000);
+    expect(gift(p, 'dimas', 'komponen', t0 + 1000).liked).toBe(true);
+    expect(canGift(p, 'laras', t0 + GIFT_COOLDOWN_MIN * 60000)).toBe(true);
   });
 
   it('cannot gift an item you do not have', () => {
@@ -120,7 +130,7 @@ describe('perks', () => {
     const full = priceFor(p, item('speed_1'));
     npcState(p, 'dimas').aff = 10;
     expect(priceFor(p, item('speed_1'))).toBeLessThan(full);
-    p.day = 3; // Hari Pasar: -20%
+    p.day = dayOn(3); // Rabu = Hari Pasar: -20%
     expect(priceFor(p, item('cmd_search'))).toBe(Math.round(70 * 0.8));
     p.credits = 1000;
     const before = p.credits;

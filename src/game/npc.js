@@ -11,6 +11,10 @@ export const TALK_GAIN = 3;
 export const GIFT_LIKED = 8;
 export const GIFT_OTHER = 3;
 export const MISSION_GAIN = 10;
+// How long until the same NPC can be talked to / given a gift again.
+export const TALK_COOLDOWN_MIN = 60;
+export const GIFT_COOLDOWN_MIN = 180;
+const MIN = 60000;
 
 export const NPCS = [
   { id: 'laras', name: 'Bu Laras', role: 'Pemilik Kafe Senja', site: 's00', unlockRep: 0, likes: 'kue',
@@ -30,7 +34,7 @@ export const levelOf = (aff) => AFF_STEPS.reduce((lv, min, i) => (aff >= min ? i
 
 export function npcState(profile, id) {
   const all = (profile.npc ||= {});
-  return (all[id] ||= { aff: 0, talkedDay: 0, giftDay: 0, claimed: 0 });
+  return (all[id] ||= { aff: 0, talkedAt: 0, giftAt: 0, claimed: 0 });
 }
 export const npcLevel = (profile, id) => levelOf(profile.npc?.[id]?.aff || 0);
 
@@ -51,8 +55,11 @@ export const npcSpot = (npc, day) => {
   return cellXY(cells[(day - 1) % cells.length]);
 };
 
-export const canTalk = (profile, id) => npcState(profile, id).talkedDay !== profile.day;
-export const canGift = (profile, id) => npcState(profile, id).giftDay !== profile.day;
+// ms left until you can talk / give a gift again (0 = ready)
+export const talkWait = (profile, id, now = Date.now()) => Math.max(0, (npcState(profile, id).talkedAt || 0) + TALK_COOLDOWN_MIN * MIN - now);
+export const giftWait = (profile, id, now = Date.now()) => Math.max(0, (npcState(profile, id).giftAt || 0) + GIFT_COOLDOWN_MIN * MIN - now);
+export const canTalk = (profile, id, now = Date.now()) => talkWait(profile, id, now) === 0;
+export const canGift = (profile, id, now = Date.now()) => giftWait(profile, id, now) === 0;
 
 // One-time rewards the first time a friendship level is reached.
 function claimLevelRewards(profile, npc, out) {
@@ -71,13 +78,13 @@ function claimLevelRewards(profile, npc, out) {
   }
 }
 
-// Talk once per day. `bonus` is what the player's dialogue choice earned.
-// Returns { gain, kopi, notes } or null if already talked today.
-export function talk(profile, id, mods = {}, bonus = 0) {
+// Talk (then wait TALK_COOLDOWN_MIN). `bonus` is what the player's dialogue choice earned.
+// Returns { gain, kopi, notes } or null while still cooling down.
+export function talk(profile, id, mods = {}, bonus = 0, now = Date.now()) {
   const npc = npcById(id);
-  if (!npc || !canTalk(profile, id)) return null;
+  if (!npc || !canTalk(profile, id, now)) return null;
   const st = npcState(profile, id);
-  st.talkedDay = profile.day;
+  st.talkedAt = now;
   const gain = TALK_GAIN + (mods.talkBonus || 0) + bonus;
   st.aff += gain;
   const notes = [];
@@ -87,12 +94,12 @@ export function talk(profile, id, mods = {}, bonus = 0) {
   return { gain, kopi, notes };
 }
 
-// Gift once per day. Returns { gain, liked, notes } or null.
-export function gift(profile, id, itemId) {
+// Gift (then wait GIFT_COOLDOWN_MIN). Returns { gain, liked, notes } or null.
+export function gift(profile, id, itemId, now = Date.now()) {
   const npc = npcById(id);
-  if (!npc || !canGift(profile, id) || !removeItem(profile, itemId)) return null;
+  if (!npc || !canGift(profile, id, now) || !removeItem(profile, itemId)) return null;
   const st = npcState(profile, id);
-  st.giftDay = profile.day;
+  st.giftAt = now;
   const liked = npc.likes === itemId;
   const gain = liked ? GIFT_LIKED : GIFT_OTHER;
   st.aff += gain;

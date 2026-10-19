@@ -54,9 +54,34 @@ export function restoreFocus(profile, amount, max = FOCUS_BASE) {
   return profile.focus;
 }
 
-// ---------- calendar ----------
-const SEASONS = ['Kemarau', 'Pancaroba', 'Penghujan', 'Pancaroba'];
-export const seasonName = (day) => SEASONS[Math.floor((day - 1) / 14) % SEASONS.length];
+// ---------- calendar: the real one ----------
+// `profile.day` is the real calendar day on the device, as days since
+// 1970-01-01 (local date). Weekly events, NPC routes, daily contracts and
+// seasons all follow the actual date and weekday.
+export const DAY_MS = 86400000;
+const DAY_NAMES = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+const MONTH_NAMES = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+// Indonesian climate by month
+const SEASON_BY_MONTH = ['Penghujan', 'Penghujan', 'Pancaroba', 'Pancaroba', 'Kemarau', 'Kemarau', 'Kemarau', 'Kemarau', 'Kemarau', 'Pancaroba', 'Penghujan', 'Penghujan'];
+
+export function dayIndex(now = Date.now()) {
+  const d = new Date(now);
+  return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / DAY_MS);
+}
+// the UTC fields of this date hold the local calendar date
+const dayDate = (day) => new Date(day * DAY_MS);
+export const weekdayOf = (day) => dayDate(day).getUTCDay();            // 0 = Minggu
+export const fmtDate = (day) => { const d = dayDate(day); return `${DAY_NAMES[d.getUTCDay()]}, ${d.getUTCDate()} ${MONTH_NAMES[d.getUTCMonth()]}`; };
+export const fmtDateShort = (day) => { const d = dayDate(day); return `${DAY_NAMES[d.getUTCDay()].slice(0, 3)} ${d.getUTCDate()} ${MONTH_NAMES[d.getUTCMonth()].slice(0, 3)}`; };
+export const seasonName = (day) => SEASON_BY_MONTH[dayDate(day).getUTCMonth()];
+
+// Moves the profile to today's date. Returns true when the day rolled over.
+export function syncDay(profile, now = Date.now()) {
+  const today = dayIndex(now);
+  if (profile.day === today) return false;
+  profile.day = today;
+  return true;
+}
 
 // Soft recurring events. Each is a small, friendly tweak — never a penalty wall.
 export const EVENTS = {
@@ -68,10 +93,12 @@ export const EVENTS = {
     loading: 1.5, retainerMult: 1.3 }
 };
 
+// Sunday: Lomba Mingguan · Wednesday: Hari Pasar · Friday: Pemadaman Listrik
 export function eventFor(day) {
-  if (day % 7 === 0) return EVENTS.festival;
-  if (day % 7 === 3) return EVENTS.pasar;
-  if (day % 7 === 5) return EVENTS.padam;
+  const w = weekdayOf(day);
+  if (w === 0) return EVENTS.festival;
+  if (w === 3) return EVENTS.pasar;
+  if (w === 5) return EVENTS.padam;
   return null;
 }
 
@@ -120,17 +147,18 @@ export function sleepProgress(profile, now = Date.now()) {
   return { elapsed, left: Math.max(0, z.ms - elapsed), fraction, done, focusNow, sleep: z };
 }
 
-// A finished sleep starts the next day; returns null if still asleep / not sleeping.
+// A finished sleep restores Fokus to full (the date is the real one, it does not move).
+// Returns null if still asleep / not sleeping.
 export function finishSleep(profile, now = Date.now()) {
   const pr = sleepProgress(profile, now);
   if (!pr?.done) return null;
   const z = pr.sleep;
   profile.sleeping = null;
-  const info = sleep(profile, z.focusMax);
-  return { ...info, slept: z.minutes };
+  profile.focus = z.focusMax;
+  return { slept: z.minutes, focus: z.focusMax };
 }
 
-// Waking up early keeps the rest you already got; the day does not change.
+// Waking up early keeps the rest you already got.
 export function wakeEarly(profile, now = Date.now()) {
   const pr = sleepProgress(profile, now);
   if (!pr) return 0;
@@ -140,9 +168,9 @@ export function wakeEarly(profile, now = Date.now()) {
   return gained;
 }
 
-// Starts the next day: full Fokus, day +1, daily NPC limits reset by day number.
-export function sleep(profile, focusMax = FOCUS_BASE) {
+// Moves the calendar one day forward (only for tests / debugging — the game
+// follows the real date through syncDay).
+export function advanceDay(profile) {
   profile.day += 1;
-  profile.focus = focusMax;
-  return { day: profile.day, season: seasonName(profile.day), event: eventFor(profile.day) };
+  return profile.day;
 }

@@ -76,7 +76,7 @@ export default {
     { when: (r) => !r.read.includes('press'), text: 'CONNECT ke Edge Bursa, baca siaran_pers.txt.' },
     { when: (r) => r.devices.ops.access !== 'user', text: 'CRACK WS Operator dengan RILIS-2025.' },
     { when: (r) => !r.read.includes('audit'), text: 'Baca memo_ops.txt dan audit.txt di WS Operator.' },
-    { when: (r, p) => !p.tools.cipher, text: 'Butuh tool Cipher untuk DECRYPT. Beli di Pasar.' },
+    { when: (r, p) => !p.tools.cipher, text: 'Butuh tool Cipher untuk DECRYPT. Beli di Pasar Gelap (peta, Selatan).' },
     { when: (r) => !opened(r), text: 'CONNECT ke Cold Storage, DOWNLOAD ledger_asli.enc, lalu DECRYPT dengan COLD640.' },
     { when: (r) => !r.flags.includes('proven'), text: 'Bonus: DOWNLOAD audit.txt juga, lalu COMPARE audit vs ledger.' }
   ],

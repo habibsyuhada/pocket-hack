@@ -1,3 +1,4 @@
+import { dayIndex } from './time.js';
 // Persistent player profile for the open-world game. Saved across sessions.
 export const TOOLS = {
   keyloom: { id: 'keyloom', name: 'KeyLoom', ram: 2, cmd: 'CRACK', desc: 'Menyusun kandidat kata sandi dari petunjuk yang kamu kumpulkan.' },
@@ -25,12 +26,12 @@ export function newProfile() {
     bought: [],
     archive: [],
     discovered: {},
-    day: 1,
+    day: dayIndex(),             // real calendar day, see game/time.js
     sleeping: null,             // { startedAt, focus, missing, minutes, ms, focusMax } while asleep
     focus: 100,                 // daily energy; see game/time.js
     items: {},                  // inventory: itemId -> count
     retainers: {},              // siteId -> { lastDone }
-    npc: {},                    // npcId -> { aff, talkedDay, giftDay, claimed }
+    npc: {},                    // npcId -> { aff, talkedAt, giftAt, claimed }
     speed: 0,                   // loading-speed upgrade level (market)
     accepted: {},               // siteId -> true once the mission is taken at the mission board
     cleared: {},
@@ -54,7 +55,7 @@ export function ramUsed(profile) {
 }
 
 export function toggleTool(profile, id) {
-  if (!profile.tools[id]) return { ok: false, msg: 'Tool belum dimiliki. Beli di Pasar.' };
+  if (!profile.tools[id]) return { ok: false, msg: 'Tool belum dimiliki. Beli di Pasar Gelap (peta, Selatan).' };
   if (profile.active.includes(id)) {
     profile.active = profile.active.filter((t) => t !== id);
     return { ok: true, msg: `${TOOLS[id].name} ditutup.` };

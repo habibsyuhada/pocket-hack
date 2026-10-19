@@ -554,3 +554,5 @@ button:active:not(:disabled):not(.node):not(.site-pin) { transform: scale(0.97);
 .loading-cancel:active { background: var(--green-ghost); color: var(--green); }
 .sleep-bar i { transition: width 1s linear; }
 .loading.sleeping { z-index: 120; background: rgba(2,4,3,0.97); }
+
+.node.token.shop .tk-st { color: #ff8f5a; }

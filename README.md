@@ -27,7 +27,10 @@ berikutnya dan keuntungan (diskon, hint murah, Fokus, dll).
 
 ## Hari, Fokus, dan kontrak
 
-- **Hari & Fokus:** tiap perintah memakai Fokus; makin lelah, aksi makin
+- **Tanggal & Fokus:** tanggal dan hari **mengikuti kalender nyata** perangkat (event
+  mingguan: Minggu = Lomba Mingguan, Rabu = Hari Pasar, Jumat = Pemadaman;
+  musim mengikuti bulan). Jeda ngobrol (1 jam) dan beri hadiah (3 jam) berbasis waktu.
+- **Fokus:** tiap perintah memakai Fokus; makin lelah, aksi makin
   mahal dan loading makin lama (tidak pernah memblokir). Tidur di **Safehouse**
   memulai hari baru dan memakan **waktu nyata: 1 menit per poin Fokus** (tetap
   berjalan walau aplikasi ditutup; BANGUN = bangun lebih awal). Event mingguan: Lomba, Hari Pasar, Pemadaman.
@@ -38,7 +41,8 @@ berikutnya dan keuntungan (diskon, hint murah, Fokus, dll).
 
 ## Navigasi
 
-Bottom bar: **Peta · Terminal · Goals · Pasar · Profil**. Terminal punya
+Bottom bar: **Peta · Terminal · Goals · Profil**. **Pasar Gelap** adalah node di peta
+(distrik Selatan), bukan tab. Terminal punya
 tombol **CMDS** (grup Eksplorasi, Akses, Server, Automation). Command
 **Server** (`FILES`, `SERVICES`, `CONTROL`) membuka halaman File / Service /
 Control node yang terhubung; `READ`, `DOWNLOAD`, `DECRYPT`, `STOP`, `START`,

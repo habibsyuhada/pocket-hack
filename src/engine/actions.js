@@ -14,7 +14,7 @@ const A = (cmd, enabled, reason = '', choose = false) => ({ cmd, enabled, reason
 export const LOCAL_CAP = 6;
 
 function needTool(profile, id) {
-  return profile.tools[id] ? '' : `Butuh tool ${TOOLS[id].name}. Beli di Pasar.`;
+  return profile.tools[id] ? '' : `Butuh tool ${TOOLS[id].name}. Beli di Pasar Gelap (peta, Selatan).`;
 }
 
 export function getActions(ctx, target) {
