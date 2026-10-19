@@ -26,6 +26,7 @@ export function newProfile() {
     archive: [],
     discovered: {},
     day: 1,
+    sleeping: null,             // { startedAt, focus, missing, minutes, ms, focusMax } while asleep
     focus: 100,                 // daily energy; see game/time.js
     items: {},                  // inventory: itemId -> count
     retainers: {},              // siteId -> { lastDone }

@@ -75,23 +75,69 @@ export function eventFor(day) {
   return null;
 }
 
-// ---------- sleeping takes time ----------
-// 3 minutes of (game) time per point of Fokus restored, at least an hour. The
-// real wait is compressed: 1 game minute = 17 ms, so a full night is ~5 s.
-export const SLEEP_MIN_PER_POINT = 3;
-export const SLEEP_MIN_TOTAL = 60;
-export const SLEEP_MS_PER_GAME_MIN = 17;
+// ---------- sleeping takes real time ----------
+// 1 minute of real time per missing point of Fokus (at least a 5 minute nap).
+// The start time is saved on the profile, so sleep keeps running while the
+// app is closed and is settled the next time it opens.
+export const SLEEP_MIN_PER_POINT = 1;
+export const SLEEP_MIN_TOTAL = 5;
+const MIN = 60000;
 
 export function sleepPlan(profile, focusMax = FOCUS_BASE) {
   const missing = Math.max(0, focusMax - profile.focus);
-  const gameMin = Math.max(SLEEP_MIN_TOTAL, missing * SLEEP_MIN_PER_POINT);
-  return { missing, gameMin, ms: Math.round(gameMin * SLEEP_MS_PER_GAME_MIN), focusMax };
+  const minutes = Math.max(SLEEP_MIN_TOTAL, missing * SLEEP_MIN_PER_POINT);
+  return { missing, minutes, ms: minutes * MIN, focusMax };
 }
 
-// 198 -> "3 jam 18 mnt"
+// "1 jam 20 mnt" / "45 mnt"
 export function fmtGameTime(min) {
   const h = Math.floor(min / 60), m = Math.round(min % 60);
   return h ? (m ? `${h} jam ${m} mnt` : `${h} jam`) : `${m} mnt`;
+}
+
+// clock for a countdown: 4825000 ms -> "1:20:25", 95000 -> "1:35"
+export function fmtClock(ms) {
+  const t = Math.max(0, Math.ceil(ms / 1000));
+  const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), sec = t % 60;
+  const two = (n) => String(n).padStart(2, '0');
+  return h ? `${h}:${two(m)}:${two(sec)}` : `${m}:${two(sec)}`;
+}
+
+export function startSleep(profile, focusMax = FOCUS_BASE, now = Date.now()) {
+  const plan = sleepPlan(profile, focusMax);
+  profile.sleeping = { startedAt: now, focus: profile.focus, ...plan };
+  return profile.sleeping;
+}
+
+// Where an ongoing sleep stands. null when not sleeping.
+export function sleepProgress(profile, now = Date.now()) {
+  const z = profile.sleeping;
+  if (!z) return null;
+  const elapsed = Math.max(0, now - z.startedAt);
+  const fraction = Math.min(1, elapsed / z.ms);
+  const done = elapsed >= z.ms;
+  const focusNow = done ? z.focusMax : Math.min(z.focusMax, z.focus + Math.floor(elapsed / MIN)); // 1 point per minute
+  return { elapsed, left: Math.max(0, z.ms - elapsed), fraction, done, focusNow, sleep: z };
+}
+
+// A finished sleep starts the next day; returns null if still asleep / not sleeping.
+export function finishSleep(profile, now = Date.now()) {
+  const pr = sleepProgress(profile, now);
+  if (!pr?.done) return null;
+  const z = pr.sleep;
+  profile.sleeping = null;
+  const info = sleep(profile, z.focusMax);
+  return { ...info, slept: z.minutes };
+}
+
+// Waking up early keeps the rest you already got; the day does not change.
+export function wakeEarly(profile, now = Date.now()) {
+  const pr = sleepProgress(profile, now);
+  if (!pr) return 0;
+  const gained = Math.max(0, pr.focusNow - pr.sleep.focus);
+  profile.sleeping = null;
+  restoreFocus(profile, gained, pr.sleep.focusMax);
+  return gained;
 }
 
 // Starts the next day: full Fokus, day +1, daily NPC limits reset by day number.

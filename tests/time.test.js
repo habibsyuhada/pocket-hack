@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { newProfile } from '../src/game/profile.js';
-import { focusState, focusCostFor, loadingMult, fatigueMult, sleepPlan, fmtGameTime, spendFocus, restoreFocus, sleep, eventFor, seasonName, EVENTS } from '../src/game/time.js';
+import { focusState, focusCostFor, loadingMult, fatigueMult, sleepPlan, fmtGameTime, fmtClock, startSleep, sleepProgress, finishSleep, wakeEarly, spendFocus, restoreFocus, sleep, eventFor, seasonName, EVENTS } from '../src/game/time.js';
 
 describe('day & focus', () => {
   it('new profile starts day 1 with full focus', () => {
@@ -55,22 +55,54 @@ describe('day & focus', () => {
     expect(fatigueMult(60)).toBe(1);
   });
 
-  it('sleep takes 3 game-minutes per missing point, at least an hour', () => {
+  it('sleep takes 1 real minute per missing Fokus point, at least a 5 minute nap', () => {
     const p = newProfile();
     p.focus = 100;
-    expect(sleepPlan(p).gameMin).toBe(60);            // already rested: still an hour
+    expect(sleepPlan(p).minutes).toBe(5);              // already rested: just a nap
     p.focus = 20;
     expect(sleepPlan(p).missing).toBe(80);
-    expect(sleepPlan(p).gameMin).toBe(240);           // 80 × 3
+    expect(sleepPlan(p).minutes).toBe(80);
+    expect(sleepPlan(p).ms).toBe(80 * 60000);          // real time, not sped up
     p.focus = 0;
-    const full = sleepPlan(p);
-    expect(full.gameMin).toBe(300);
-    expect(full.ms).toBeGreaterThan(sleepPlan({ focus: 50 }).ms);
-    expect(fmtGameTime(198)).toBe('3 jam 18 mnt');
-    expect(fmtGameTime(300)).toBe('5 jam');
+    expect(sleepPlan(p).minutes).toBe(100);
+    expect(fmtGameTime(80)).toBe('1 jam 20 mnt');
+    expect(fmtGameTime(60)).toBe('1 jam');
     expect(fmtGameTime(45)).toBe('45 mnt');
+    expect(fmtClock(4825000)).toBe('1:20:25');
+    expect(fmtClock(95000)).toBe('1:35');
+    expect(fmtClock(0)).toBe('0:00');
   });
 
+  it('sleep runs on timestamps: it survives a restart and settles on the next day', () => {
+    const p = newProfile();
+    p.focus = 40;
+    const t0 = 1_000_000;
+    startSleep(p, 100, t0);
+    expect(p.sleeping.minutes).toBe(60);
+    // 15 minutes in: +15 Fokus shown, still asleep
+    expect(sleepProgress(p, t0 + 15 * 60000).focusNow).toBe(55);
+    expect(finishSleep(p, t0 + 15 * 60000)).toBeNull();
+    expect(p.day).toBe(1);
+    // the app was closed for 2 hours: it settles on open
+    const info = finishSleep(p, t0 + 120 * 60000);
+    expect(info.day).toBe(2);
+    expect(info.slept).toBe(60);
+    expect(p.focus).toBe(100);
+    expect(p.sleeping).toBeNull();
+  });
+
+  it('waking early keeps the rest so far and keeps the day', () => {
+    const p = newProfile();
+    p.focus = 40;
+    const t0 = 5_000_000;
+    startSleep(p, 100, t0);
+    const got = wakeEarly(p, t0 + 20 * 60000);
+    expect(got).toBe(20);
+    expect(p.focus).toBe(60);
+    expect(p.day).toBe(1);
+    expect(p.sleeping).toBeNull();
+    expect(wakeEarly(p, t0 + 99999999)).toBe(0);       // not sleeping any more
+  });
 
   it('restoreFocus caps at max; sleep resets focus and advances the day', () => {
     const p = newProfile();

@@ -13,7 +13,7 @@ import { PLACEHOLDER, portraitSrc } from './portraits.js';
 import { MARKET, buy, canBuy, owned, priceFor } from '../game/market.js';
 import { ITEMS, KOPI_FOCUS, KOPI_PRICE, MISSION_ITEMS, addItem, addAll, removeItem, countOf, contractDrop } from '../game/items.js';
 import { NPCS, LEVEL_NAMES, AFF_STEPS, npcById, npcState, npcLevel, levelOf, levelProgress, isVisible, npcSpot, canTalk, canGift, talk, gift, missionBond } from '../game/npc.js';
-import { eventFor, focusCostFor, restoreFocus, loadingMult, spendFocus, sleep, sleepPlan, fmtGameTime, focusState, FOCUS_LABEL, seasonName } from '../game/time.js';
+import { eventFor, focusCostFor, restoreFocus, loadingMult, spendFocus, startSleep, sleepPlan, sleepProgress, finishSleep, wakeEarly, fmtGameTime, fmtClock, focusState, FOCUS_LABEL, seasonName } from '../game/time.js';
 import { perksFor } from '../game/perks.js';
 import { canContract, startContract, hasContract, pendingDays, payout, collect } from '../game/retainer.js';
 import { rankFor, nextRank, rankProgress } from '../game/progression.js';
@@ -72,6 +72,10 @@ export class App {
     }
     this.intro = !saved;
     this.initWorld();
+    if (this.profile.sleeping) {
+      const info = finishSleep(this.profile);                // slept through while the app was closed
+      if (info) { this.persist(); this.overlay = { kind: 'daystart', info }; } else this.startSleepTicker();
+    }
     this.render();
   }
 
@@ -130,6 +134,7 @@ export class App {
 
   // Android back button / Escape: unwind one level. Returns false when there is nothing left to close.
   back() {
+    if (this.profile.sleeping) return true;
     if (this.busy) { this.cancelBusy(); return true; }
     if (this.overlay) { this.overlay = null; this.render(); return true; }
     if (this.dlg) {
@@ -166,8 +171,7 @@ export class App {
   // spent when it finishes, so a cancelled command costs nothing. Overclock
   // upgrades shorten the base time.
   //   opts.cost   fixed Fokus cost        opts.base  fixed base duration (still scaled by fatigue)
-  //   opts.ms     fixed total duration    opts.sleep sleep plan (shows time of night)
-  //   opts.onCancel(progress 0..1)        opts.cancelLabel
+  //   opts.ms     fixed total duration    opts.onCancel(progress 0..1)
   withLoading(label, fn, opts = {}) {
     if (this.busy) return;
     const mods = perksFor(this.profile);
@@ -176,7 +180,7 @@ export class App {
     const ms = Math.round(base * mult);
     this.busy = {
       label, ms, base, mult, start: Date.now(), focus: this.profile.focus,
-      state: focusState(this.profile.focus), sleep: opts.sleep || null, cancelLabel: opts.cancelLabel || 'BATAL',
+      state: focusState(this.profile.focus),
       cost: opts.cost ?? focusCostFor(this.profile, label, mods), onCancel: opts.onCancel || null
     };
     this.render();
@@ -210,9 +214,7 @@ export class App {
     if (!b) return;
     const left = Math.max(0, b.ms - (Date.now() - b.start));
     const t = this.root.querySelector('.loading-left');
-    if (t) t.textContent = b.sleep ? fmtGameTime(Math.ceil((left / b.ms) * b.sleep.gameMin)) + ' lagi' : `sisa ${fmtSec(left)}`;
-    const f = this.root.querySelector('.loading-focus');
-    if (f && b.sleep) f.textContent = `⚡ ${b.focus + Math.floor((1 - left / b.ms) * b.sleep.missing)}`;
+    if (t) t.textContent = `sisa ${fmtSec(left)}`;
   }
 
   // A command that found nothing to act on still takes its time and some Fokus
@@ -310,25 +312,60 @@ export class App {
       .map((n) => h('p', { style: 'color:var(--ink);font-size:13px;margin:6px 0' }, `📄 Kontrak ${siteById(n.id).title} menunggu: ◆${payout(this.profile, n.id, siteById(n.id), perksFor(this.profile))}`));
   }
 
+  // Sleep is real time (1 minute per Fokus point) and is stored as a start
+  // timestamp, so it keeps running when the app is closed.
   goSleep() {
     this.overlay = null;
-    const mods = perksFor(this.profile);
-    const plan = sleepPlan(this.profile, mods.focusMax);
-    this.withLoading('TIDUR', () => {
-      const info = sleep(this.profile, mods.focusMax);
-      this.persist();
-      this.overlay = { kind: 'daystart', info: { ...info, slept: plan.gameMin } };
-      this.render();
-    }, {
-      cost: 0, ms: plan.ms, sleep: plan, cancelLabel: 'BANGUN',
-      // waking up early: you keep the rest you already got, but the day does not change
-      onCancel: (progress) => {
-        const got = Math.floor(progress * plan.missing);
-        restoreFocus(this.profile, got, mods.focusMax);
-        this.persist();
-        this.toast(got ? `Kamu bangun lebih awal. Fokus +${got}.` : 'Kamu batal tidur.', 'hint');
-      }
-    });
+    startSleep(this.profile, perksFor(this.profile).focusMax);
+    this.persist();
+    this.render();
+    this.startSleepTicker();
+  }
+
+  startSleepTicker() {
+    clearInterval(this._sleepT);
+    this._sleepT = setInterval(() => this.tickSleep(), 1000);
+  }
+
+  tickSleep() {
+    const pr = sleepProgress(this.profile);
+    if (!pr) { clearInterval(this._sleepT); return; }
+    if (pr.done) { this.completeSleep(); return; }
+    const q = (c) => this.root.querySelector(c);
+    if (q('.sleep-left')) q('.sleep-left').textContent = `sisa ${fmtClock(pr.left)}`;
+    if (q('.sleep-focus')) q('.sleep-focus').textContent = `⚡ ${pr.focusNow}`;
+    if (q('.sleep-bar i')) q('.sleep-bar i').style.width = `${Math.round(pr.fraction * 100)}%`;
+  }
+
+  completeSleep() {
+    clearInterval(this._sleepT);
+    const info = finishSleep(this.profile);
+    if (!info) return;
+    this.persist();
+    this.overlay = { kind: 'daystart', info };
+    this.render();
+  }
+
+  wake() {
+    clearInterval(this._sleepT);
+    const got = wakeEarly(this.profile);
+    this.persist();
+    this.render();
+    this.toast(got ? `Kamu bangun lebih awal. Fokus +${got}.` : 'Kamu batal tidur.', 'hint');
+  }
+
+  vSleeping() {
+    const h = this.h.bind(this);
+    const pr = sleepProgress(this.profile), z = pr.sleep;
+    return h('div', { class: 'loading sleeping' },
+      h('div', { class: 'loading-box' },
+        h('div', { class: 'loading-cmd' }, '> tidur', h('span', { class: 'blink' }, '_')),
+        h('div', { class: 'loading-bar sleep-bar' }, h('i', { style: `width:${Math.round(pr.fraction * 100)}%;animation:none` })),
+        h('div', { class: 'loading-focus sleep-focus' }, `⚡ ${pr.focusNow}`),
+        h('small', { class: 'loading-left sleep-left' }, `sisa ${fmtClock(pr.left)}`),
+        h('small', {}, `Tidur ${fmtGameTime(z.minutes)} · 1 menit = 1 Fokus · ⚡${z.focus} → ${z.focusMax}`),
+        h('small', {}, 'Aplikasi boleh ditutup — tidurmu tetap berjalan.'),
+        h('button', { class: 'loading-cancel', onclick: () => this.wake() }, 'BANGUN')));
   }
 
   // Opening the file server on a contracted site's entry node is the daily chore.
@@ -500,6 +537,7 @@ export class App {
     if (this.dlg) el.append(this.vDialogue());
     if (this.overlay) el.append(this.vOverlay());
     if (this.busy) el.append(this.vLoading());
+    if (this.profile.sleeping) el.append(this.vSleeping());
     if (this.notice) el.append(this.vToast());
     this.root.replaceChildren(el);
     if (this.view === 'map') this.setupMap();
@@ -515,23 +553,16 @@ export class App {
     const h = this.h.bind(this);
     const b = this.busy;
     const left = Math.max(0, b.ms - (Date.now() - b.start));
-    const rows = [];
-    if (b.sleep) {
-      rows.push(h('div', { class: 'loading-focus' }, `⚡ ${b.focus}`),
-        h('small', { class: 'loading-left' }, fmtGameTime(Math.ceil((left / b.ms) * b.sleep.gameMin)) + ' lagi'),
-        h('small', {}, `Tidur ${fmtGameTime(b.sleep.gameMin)} (waktu game) · 3 mnt per 1 Fokus · ⚡${b.focus} → ${b.sleep.focusMax}`));
-    } else {
-      const note = b.mult > 1 ? `Estimasi ${fmtSec(b.ms)} = ${fmtSec(b.base)} × ${String(b.mult).replace('.', ',')} (${b.mult >= 2 ? 'Kelelahan' : 'Lelah'}, Fokus ${b.focus})` : `Estimasi ${fmtSec(b.ms)} (normal)`;
-      rows.push(h('small', { class: 'loading-left' }, `sisa ${fmtSec(left)}`),
-        h('small', {}, note),
-        b.cost > 0 && h('small', { class: 'loading-cost' }, `Biaya ⚡ −${b.cost} (setelah selesai)`));
-    }
+    const note = b.mult > 1 ? `Estimasi ${fmtSec(b.ms)} = ${fmtSec(b.base)} × ${String(b.mult).replace('.', ',')} (${b.mult >= 2 ? 'Kelelahan' : 'Lelah'}, Fokus ${b.focus})` : `Estimasi ${fmtSec(b.ms)} (normal)`;
+    const rows = [h('small', { class: 'loading-left' }, `sisa ${fmtSec(left)}`),
+      h('small', {}, note),
+      b.cost > 0 && h('small', { class: 'loading-cost' }, `Biaya ⚡ −${b.cost} (setelah selesai)`)];
     return h('div', { class: 'loading' },
       h('div', { class: 'loading-box' },
         h('div', { class: 'loading-cmd' }, '> ', b.label.toLowerCase(), h('span', { class: 'blink' }, '_')),
         h('div', { class: 'loading-bar' + (b.mult >= 2 ? ' slow' : '') }, h('i', { style: `animation-duration:${b.ms}ms;animation-delay:-${Date.now() - b.start}ms` })),
         ...rows,
-        h('button', { class: 'loading-cancel', onclick: () => this.cancelBusy() }, b.cancelLabel)));
+        h('button', { class: 'loading-cancel', onclick: () => this.cancelBusy() }, 'BATAL')));
   }
 
   // ---------- dialogue (visual-novel style) ----------
@@ -1350,10 +1381,10 @@ export class App {
         h('div', { class: 'focus-box' },
           h('div', { class: 'focus-top' }, h('b', {}, `Fokus ${this.profile.focus}`), h('span', { class: 'fo ' + focusState(this.profile.focus) }, FOCUS_LABEL[focusState(this.profile.focus)])),
           h('div', { class: 'rankbar' }, h('i', { style: `width:${Math.min(100, this.profile.focus)}%` })),
-          h('small', {}, 'Makin lelah, aksi makin mahal dan loading makin lama. Tidur memulihkan Fokus.')),
+          h('small', {}, 'Makin lelah, aksi makin mahal dan loading makin lama. Tidur memulihkan 1 Fokus per menit (waktu nyata).')),
         ...this.supplyRows(),
         ...this.contractRows(),
-        h('button', { class: 'jackin', onclick: () => this.goSleep() }, '▸ TIDUR · hari berikutnya'),
+        h('button', { class: 'jackin', onclick: () => this.goSleep() }, `▸ TIDUR · ${fmtGameTime(sleepPlan(this.profile, perksFor(this.profile).focusMax).minutes)} · hari berikutnya`),
         h('button', { class: 'act dim', onclick: close }, 'TUTUP'));
     } else if (o.kind === 'daystart') {
       const i = o.info;

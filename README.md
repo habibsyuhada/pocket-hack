@@ -29,7 +29,8 @@ berikutnya dan keuntungan (diskon, hint murah, Fokus, dll).
 
 - **Hari & Fokus:** tiap perintah memakai Fokus; makin lelah, aksi makin
   mahal dan loading makin lama (tidak pernah memblokir). Tidur di **Safehouse**
-  memulai hari baru. Event mingguan: Lomba, Hari Pasar, Pemadaman.
+  memulai hari baru dan memakan **waktu nyata: 1 menit per poin Fokus** (tetap
+  berjalan walau aplikasi ditutup; BANGUN = bangun lebih awal). Event mingguan: Lomba, Hari Pasar, Pemadaman.
 - **Kontrak perawatan:** setelah misi selesai, klien menawarkan tugas harian
   (buka File Server di node awalnya) untuk kredit rutin.
 - Semua perintah berjalan di balik **loading layar penuh**; Overclock di
