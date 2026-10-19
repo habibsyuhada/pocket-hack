@@ -67,7 +67,7 @@ export function sourceStrings() {
       const s = (m[1] ?? m[2]).replace(/\\n/g, '\n').replace(/\\'/g, "'");
       const before = src.slice(Math.max(0, m.index - 12), m.index);
       if (/(class|style|type|id|kind|view|mode|cls|icon|stCls|color|key|name)\s*:\s*$/.test(before) && !/\s/.test(s)) continue;
-      if (/font-size|margin:|padding:|color:|var\(--|^\.|^\w+:\s*\d|animation|translate\(/.test(s)) continue;
+      if (/font-size|margin:|padding:|color:|var\(--|^\.|^\w+:\s*\d|animation|translate\(|\bfx-[a-z]|cubic-bezier|--d:/.test(s)) continue;
       if (isProse(s) && (/\s|[^\x00-\x7f]/.test(s) || /^[A-Z]/.test(s))) out.add(s);
       else if (/^[A-Z][A-Z ·&▸✓●★⚡◆]{2,}$/.test(s) && !CMD_WORDS.has(s)) out.add(s);          // ALL-CAPS button labels
     }
@@ -75,6 +75,7 @@ export function sourceStrings() {
     for (const m of src.matchAll(/`((?:[^`\\]|\\.)*)`/g)) {
       let n = 0;
       const s = m[1].replace(/\$\{(?:[^{}]|\{[^{}]*\})*\}/g, () => `{${++n}}`).replace(/\\n/g, '\n');
+      if (/^left:|--d:|animation-delay/.test(s)) continue;
       if (isProse(s.replace(/\{\d+\}/g, '')) && /[A-Za-z]{3}/.test(s.replace(/\{\d+\}/g, ''))) out.add(s);
     }
   }

@@ -16,7 +16,8 @@ import s20 from './s20.js';
 import s21 from './s21.js';
 import npcs from './npcs.js';
 import infra from './infra.js';
+import fx from './fx.js';
 
-const all = [s07, s08, s09, s10, s11, s12, s13, s14, s15, s16, s17, s18, s19, s20, s21, npcs, infra];
+const all = [fx, s07, s08, s09, s10, s11, s12, s13, s14, s15, s16, s17, s18, s19, s20, s21, npcs, infra];
 export const EXTRA_EN = Object.assign({}, ...all.map((m) => m.en));
 export const EXTRA_SAME = all.flatMap((m) => m.same);

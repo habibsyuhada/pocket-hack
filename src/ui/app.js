@@ -17,7 +17,11 @@ import { eventFor, focusCostFor, restoreFocus, loadingMult, spendFocus, startSle
 import { perksFor } from '../game/perks.js';
 import { canContract, startContract, hasContract, pendingDays, payout, collect } from '../game/retainer.js';
 import { rankFor, nextRank, rankProgress } from '../game/progression.js';
-import { saveProfile, loadProfile, clearProfile, buzz } from '../platform/storage.js';
+import { saveProfile, loadProfile, clearProfile } from '../platform/storage.js';
+import { fx } from '../fx/index.js';
+import { vfx } from '../fx/vfx.js';
+import { cue as sfxCue } from '../fx/sfx.js';
+import { settings, setSettings, VFX_MODES } from '../fx/settings.js';
 import { iconSvg } from './icons.js';
 import { t, tr, isEnglish, LANG, LANGS, setLang } from '../i18n/index.js';
 
@@ -163,7 +167,7 @@ export class App {
     this._centerOn = m.entry[0];
     this.mapView = null;
     this.persist();
-    buzz('heavy');
+    fx.accept();
   }
 
   // Android back button / Escape: unwind one level. Returns false when there is nothing left to close.
@@ -186,7 +190,6 @@ export class App {
   toast(msg, icon) {
     const id = (this._toastId = (this._toastId || 0) + 1);
     this.notice = { id, msg, icon: icon || (/terkunci/i.test(msg) ? 'lock' : 'hint') };
-    buzz('light');
     this.render();
     setTimeout(() => {
       if (this.notice?.id !== id) return;
@@ -256,7 +259,7 @@ export class App {
   // before it tells you so.
   failAttempt(cmd, message) {
     this.overlay = null;
-    this.withLoading(cmd, () => { this.persist(); this.render(); this.toast(message); });
+    this.withLoading(cmd, () => { this.persist(); this.render(); fx.fail(); this.toast(message, 'warn'); });
   }
 
   useItem(id) {
@@ -346,8 +349,9 @@ export class App {
   vSleeping() {
     const h = this.h.bind(this);
     const pr = sleepProgress(this.profile), z = pr.sleep;
-    return h('div', { class: 'loading sleeping' },
-      h('div', { class: 'loading-box' },
+    const stars = Array.from({ length: 14 }, (_, i) => h('i', { class: 'fx-twinkle sleep-star', style: `left:${(i * 53) % 100}%;top:${(i * 37) % 70}%;--d:${(i * 0.37).toFixed(2)}s` }));
+    return h('div', { class: 'loading sleeping' }, ...stars,
+      h('div', { class: 'loading-box fx-breathe' },
         h('div', { class: 'loading-cmd' }, '> tidur', h('span', { class: 'blink' }, '_')),
         h('div', { class: 'loading-bar sleep-bar' }, h('i', { style: `width:${Math.round(pr.fraction * 100)}%;animation:none` })),
         h('div', { class: 'loading-focus sleep-focus' }, `⚡ ${pr.focusNow}`),
@@ -395,8 +399,8 @@ export class App {
   }
 
   finishCommand(cmd, target) {
-    const { sheet } = exec(this.ctx, cmd, target);
-    buzz('light');
+    const { sheet, out } = exec(this.ctx, cmd, target);
+    fx.command(cmd, !out.some((l) => l.t === 'warn' || l.t === 'err'));
     if (cmd === 'CONNECT' && this.cur) { this.sel = { type: 'device', id: this.cur }; this.view = 'terminal'; }
     this.persist();
     if (cmd === 'DISCONNECT' && NODE_PAGES.includes(this.view)) this.view = 'map';
@@ -413,8 +417,8 @@ export class App {
     const o = this.overlay;
     this.overlay = null;
     this.withLoading(o.cmd, () => {
-      const { sheet } = exec(this.ctx, o.cmd, o.target, value);
-      buzz('light');
+      const { sheet, out } = exec(this.ctx, o.cmd, o.target, value);
+      fx.command(o.cmd, !out.some((l) => l.t === 'warn' || l.t === 'err'));
       this.persist();
       this.overlay = sheet ? { kind: 'read', sheet } : null;
       this.render();
@@ -426,7 +430,7 @@ export class App {
     this.overlay = null;
     this.withLoading('CONFIG', () => {
       for (const [key, value] of Object.entries(o.config)) exec(this.ctx, 'CONFIG', o.target, [key, value]);
-      buzz('light');
+      fx.command('CONFIG', true);
       this.persist();
       this.render();
     });
@@ -486,13 +490,14 @@ export class App {
     }
     this.persist();
     this.overlay = { kind: 'result', res };
-    buzz('heavy');
+    fx.missionDone(res);
     this.render();
   }
 
   doBuy(itemId) {
     const r = buy(this.profile, itemId);
-    if (r.ok) { this.persist(); buzz('light'); } else this.toast(r.msg);
+    fx.buy(r.ok);
+    if (r.ok) this.persist(); else this.toast(r.msg);
     this.render();
   }
 
@@ -505,7 +510,7 @@ export class App {
     const e = document.createElement(tag);
     for (const [k, v] of Object.entries(props)) {
       if (k === 'class') e.className = v;
-      else if (k === 'onclick') e.addEventListener('click', v);
+      else if (k.startsWith('on') && typeof v === 'function') e.addEventListener(k.slice(2), v);
       else if (k === 'html') e.innerHTML = v;
       else if (v !== null && v !== false && v !== undefined) e.setAttribute(k, TEXT_ATTRS.has(k) ? tr(String(v)) : v);
     }
@@ -515,10 +520,10 @@ export class App {
 
   render() {
     const el = this.h('div', { class: 'screen' });
-    if (this.intro) { el.append(this.vIntro()); this.root.replaceChildren(el); return; }
+    if (this.intro) { el.append(this.vIntro()); this.root.replaceChildren(el); this.fxFrame(); return; }
     el.append(this.statusStrip());
     const mapfull = this.view === 'map';
-    const pane = this.h('div', { class: 'pane' + (this.view === 'terminal' ? ' term' : '') + (mapfull ? ' mapfull' : '') });
+    const pane = this.h('div', { class: 'pane' + (this.view === 'terminal' ? ' term fx-scan' : '') + (mapfull ? ' mapfull' : '') + (mapfull ? '' : this.enterCls('view', this.view, 'fx-fade-up')) });
     pane.append(...this.viewPane());
     el.append(pane);
     if (this.showHint && this.ctx) el.append(this.h('div', { class: 'hint' }, '💡 ', this.hintText));
@@ -531,6 +536,32 @@ export class App {
     this.root.replaceChildren(el);
     if (this.view === 'map') this.setupMap();
     if (this.dlg) this.startTyping();
+    this.fxFrame();
+  }
+
+  // Entrance animations must not replay on every render (the whole DOM is rebuilt):
+  // the class is returned only when `key` differs from the last one seen in this slot.
+  enterCls(slot, key, cls) {
+    const m = (this._enter ||= {});
+    if (m[slot] === key) return '';
+    m[slot] = key;
+    return ' ' + cls;
+  }
+  idOf(o) {
+    const m = (this._ids ||= new WeakMap());
+    if (!m.has(o)) m.set(o, (this._idN = (this._idN || 0) + 1));
+    return m.get(o);
+  }
+
+  // hand the sound / effects layer a snapshot of what is on screen
+  fxFrame() {
+    const p = this.profile, run = this.ctx?.run;
+    const dev = this.cur && run ? device(run, this.cur) : null;
+    fx.frame({
+      intro: this.intro, view: this.view, overlay: this.overlay, overlayKind: this.overlay?.kind, dlg: this.dlg, busy: !!this.busy,
+      noticeId: this.notice?.id, noticeIcon: this.notice?.icon, sleeping: !!p.sleeping, credits: p.credits, focus: p.focus, rank: rankFor(p.rep).id,
+      district: dev?.district || null, finale: !!p.accepted?.s21 && !p.cleared?.s21 && dev?.district === 'industri', ending: false
+    });
   }
 
   vToast() {
@@ -549,7 +580,7 @@ export class App {
     return h('div', { class: 'loading' },
       h('div', { class: 'loading-box' },
         h('div', { class: 'loading-cmd' }, '> ', b.label.toLowerCase(), h('span', { class: 'blink' }, '_')),
-        h('div', { class: 'loading-bar' + (b.mult >= 2 ? ' slow' : '') }, h('i', { style: `animation-duration:${b.ms}ms;animation-delay:-${Date.now() - b.start}ms` })),
+        h('div', { class: 'loading-bar fx-seg-shine' + (b.mult >= 2 ? ' slow' : '') }, h('i', { style: `animation-duration:${b.ms}ms;animation-delay:-${Date.now() - b.start}ms` })),
         ...rows,
         h('button', { class: 'loading-cancel', onclick: () => this.cancelBusy() }, 'BATAL')));
   }
@@ -621,6 +652,7 @@ export class App {
     const r = talk(this.profile, id, perksFor(this.profile), this.dlg.bonus);
     this.persist();
     this.dlgHub();
+    if (this.dlg?.bonus > 0 || r?.notes?.length) fx.bond(this.root.querySelector('.portrait-ph, .portrait-img'));
     const msgs = [...(r?.kopi ? ['+1 Kopi Susu'] : []), ...(r?.notes || [])];
     if (msgs.length) this.toast(msgs.join(' · '), 'hint');
   }
@@ -636,6 +668,7 @@ export class App {
     const id = this.dlg.npc;
     this.withLoading('HADIAH', () => {
       const r = gift(this.profile, id, itemId);
+      fx.gift();
       this.persist();
       this.dlgPlay(giftLines(id, !!r?.liked), () => this.dlgHub());
       if (r?.notes.length) this.toast(r.notes.join(' · '), 'hint');
@@ -724,9 +757,12 @@ export class App {
     if (this.dlg.typedKey === this.dlg.key) { el.textContent = full; return; }
     let n = 0;
     el.textContent = '';
+    const npcId = this.dlg.npc, mood = this.dlg.line.who === 'you' ? 'normal' : this.dlg.line.mood;
+    const isYou = this.dlg.line.who === 'you';
     this._typeT = setInterval(() => {
       n += 1;
       el.textContent = full.slice(0, n);
+      if (n % 2 === 0 && /\S/.test(full[n - 1] || '')) { if (isYou) sfxCue('typeTick'); else fx.blip(npcId, mood); }
       if (n >= full.length) this.endTyping();
     }, 18);
   }
@@ -804,13 +840,13 @@ export class App {
         h('button', { class: 'dlg-opt dim', onclick: (e) => { e.stopPropagation(); this.dlgHub(); } }, 'Kembali'));
     }
 
-    return h('div', { class: 'dlg' },
+    return h('div', { class: 'dlg' + this.enterCls('dlg', this.idOf(d), 'fx-fade-up') },
       h('div', { class: 'dlg-top' },
         h('div', { class: 'dlg-who' }, h('b', {}, npc.name), h('small', {}, `${npc.role} · ${LEVEL_NAMES[lv]}`)),
         h('div', { class: 'dlg-bar' }, h('i', { style: `width:${Math.round(levelProgress(st.aff) * 100)}%` })),
         h('button', { class: 'dlg-x', title: 'Info & keuntungan', onclick: () => { this.overlay = { kind: 'npcinfo', id: d.npc }; this.render(); } }, 'i'),
         h('button', { class: 'dlg-x', title: 'Tutup', onclick: () => this.dlgClose() }, '✕')),
-      h('div', { class: 'dlg-stage' }, portrait),
+      h('div', { class: 'dlg-stage' + this.enterCls('portrait', `${this.idOf(d)}`, 'fx-slide-in-left') }, portrait),
       h('div', { class: 'dlg-box', onclick: () => this.dlgAdvance() },
         h('div', { class: 'dlg-name' + (you ? ' you' : '') }, you ? 'Kamu' : npc.name),
         h('div', { class: 'dlg-text', 'data-full': d.line.text }, d.line.text),
@@ -821,11 +857,13 @@ export class App {
   // ---------- intro ----------
   vIntro() {
     const h = this.h.bind(this);
-    return h('div', { class: 'intro' },
-      h('div', { class: 'intro-logo' }, 'POCKET', h('span', {}, 'HACK')),
+    const boot = ['> rig.init ........ OK', '> uplink: isp_core ... OK', '> menunggu operator_'];
+    return h('div', { class: 'intro fx-hex-rain' },
+      h('div', { class: 'intro-boot' }, ...boot.map((l, i) => h('div', { class: 'fx-fade-up', style: `animation-delay:${i * 380}ms` }, l))),
+      h('div', { class: 'intro-logo fx-glitch-text', style: 'animation-delay:1100ms' }, 'POCKET', h('span', {}, 'HACK')),
       h('p', { class: 'intro-tag' }, t('Kota {1}. Sebuah terminal, sebuah rig, dan jaringan yang menunggu diselidiki.', CITY_INFO.name)),
       h('p', { class: 'intro-note' }, 'Semua jaringan, perangkat, dan celah di game ini fiktif. Ini puzzle investigasi, bukan alat peretasan nyata.'),
-      h('button', { class: 'intro-go', onclick: () => { this.intro = false; this.persist(); this.render(); } }, '▸ MASUK KOTA'));
+      h('button', { class: 'intro-go fx-pulse-glow fx-fade-up', style: 'animation-delay:1500ms', onclick: () => { this.intro = false; this.persist(); this.render(); } }, '▸ MASUK KOTA'));
   }
 
   // ---------- status strip ----------
@@ -934,7 +972,7 @@ export class App {
       drawn.add(key);
       const ln = document.createElementNS('http://www.w3.org/2000/svg', 'line');
       ln.setAttribute('x1', a.x); ln.setAttribute('y1', a.y); ln.setAttribute('x2', b.x); ln.setAttribute('y2', b.y);
-      if (cur && (a.id === cur || b.id === cur)) ln.setAttribute('class', 'hot');
+      if (cur && (a.id === cur || b.id === cur)) ln.setAttribute('class', 'hot fx-flow');
       else if (missionOf(a) && missionOf(a) === missionOf(b)) ln.setAttribute('class', 'mission');
       svg.append(ln);
     };
@@ -942,6 +980,21 @@ export class App {
 
     const known = Object.values(run.devices).filter((d) => d.discovered);
     for (const d of known) for (const l of d.links || []) { const nb = run.devices[l]; if (nb?.discovered) line(d, nb); }
+    // ROUTE hops (relay → another network) are drawn dashed
+    for (const d of known) for (const l of d.routes || []) {
+      const nb = run.devices[l]; if (!nb?.discovered) continue;
+      const key = [d.id, nb.id].sort().join('|~');
+      if (drawn.has(key)) continue; drawn.add(key);
+      const ln = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      ln.setAttribute('x1', d.x); ln.setAttribute('y1', d.y); ln.setAttribute('x2', nb.x); ln.setAttribute('y2', nb.y);
+      ln.setAttribute('class', 'route fx-flow');
+      svg.append(ln);
+    }
+    // nodes that just showed up on the map pop in (not on the first draw)
+    const fresh = new Set();
+    if (this._seenNodes) for (const d of known) if (!this._seenNodes.has(d.id)) fresh.add(d.id);
+    this._seenNodes = new Set(known.map((d) => d.id));
+    if (fresh.size) setTimeout(() => fx.discover(fresh.size), 0);
 
     // district names appear once you know a node there
     const seen = new Set(known.map((d) => d.district));
@@ -993,7 +1046,7 @@ export class App {
       const mcode = mid && (active || cleared) ? siteById(mid).code : null;
       const state = isCur ? 'cur' : near.has(d.id) ? 'near' : 'far';
       cards.push(this.nodeCardPx({
-        cls: 'dev ' + state + (d.hub ? ' hub' : '') + (cleared ? ' m-done' : active ? ' m-active' : '') + (d.online ? '' : ' off'),
+        cls: 'dev ' + state + (fresh.has(d.id) ? ' fx-pop fx-sonar' : '') + (d.hub ? ' hub' : '') + (cleared ? ' m-done' : active ? ' m-active' : '') + (d.online ? '' : ' off'),
         cx: d.x, cy: d.y, icon: d.kind, title: d.name, sub: d.addr, tag: mcode ? { t: mcode, cls: cleared ? 'done' : 'on' } : null,
         st: isCur ? t('● TERHUBUNG · {1}', LEVEL_LABEL[d.access])
           : due ? t('RUTIN ◆{1}', payout(this.profile, rut.id, rut, perksFor(this.profile)))
@@ -1036,6 +1089,7 @@ export class App {
       }
     }
     if (inner && this.mapView) inner.style.transform = `translate(${this.mapView.x}px,${this.mapView.y}px) scale(${this.mapView.scale})`;
+    if (this.mapView) this._lastT = { ...this.mapView };
   }
 
   zoomBy(f) {
@@ -1056,6 +1110,14 @@ export class App {
       const s = this._mapScale || 0.8, c = this._mapCenter || { x: MAPW / 2, y: MAPH / 2 };
       this.mapView = { scale: s, x: r.width / 2 - c.x * s, y: r.height / 2 - c.y * s };
       this._centerOn = null;
+      // glide from where the camera was to the new focus instead of jumping
+      const from = this._lastT;
+      if (from && settings.vfx !== 'off' && inner) {
+        inner.style.transform = `translate(${from.x}px,${from.y}px) scale(${from.scale})`;
+        void inner.offsetWidth;
+        inner.style.transition = 'transform 560ms cubic-bezier(.2,.8,.2,1)';
+        setTimeout(() => { inner.style.transition = ''; }, 600);
+      }
     }
     this.applyMapT(inner);
     this.bindPanZoom(vp, inner);
@@ -1223,9 +1285,28 @@ export class App {
       h('div', { class: 'setting-note' }, 'Bahasa dipakai untuk seluruh tampilan, dialog, dan misi. Mengganti bahasa memuat ulang game; progresmu tetap tersimpan.'),
       h('div', { class: 'lang-row' }, ...Object.entries(LANGS).map(([code, name]) =>
         h('button', { class: 'lang-btn' + (code === LANG ? ' on' : ''), onclick: () => this.changeLanguage(code) }, name))),
+      h('div', { class: 'section-h' }, 'Suara & efek'),
+      this.slider('Suara', 'sfx', () => sfxCue('confirm')),
+      this.slider('Musik', 'music'),
+      h('div', { class: 'setting-row' }, h('span', {}, 'Getar (haptik)'),
+        h('button', { class: 'lang-btn' + (settings.haptics ? ' on' : ''), onclick: () => { setSettings({ haptics: !settings.haptics }); fx.haptic('medium'); sfxCue(settings.haptics ? 'toggleOn' : 'toggleOff'); this.render(); } }, settings.haptics ? 'AKTIF' : 'MATI')),
+      h('div', { class: 'setting-note' }, 'Efek visual: Penuh = semua animasi dan partikel · Hemat = lebih sedikit (baterai) · Mati = tanpa efek.'),
+      h('div', { class: 'lang-row' }, ...VFX_MODES.map((m) =>
+        h('button', { class: 'lang-btn' + (settings.vfx === m ? ' on' : ''), onclick: () => { setSettings({ vfx: m }); sfxCue('toggleOn'); this.render(); } }, { full: 'Penuh', lite: 'Hemat', off: 'Mati' }[m]))),
+      h('button', { class: 'linklike', onclick: () => { sfxCue('missionAccept'); fx.haptic('success'); } }, 'tes suara & getar'),
       h('div', { class: 'section-h' }, 'Data'),
       h('button', { class: 'linklike', onclick: () => this.confirmBox('Hapus semua progres?', 'Semua kredit, rep, dan progres misi akan hilang.', 'HAPUS', () => this.resetGame()) }, 'reset progres')
     ];
+  }
+
+  // 0–100 slider bound to a fx setting (does not re-render while dragging)
+  slider(label, key, onDone) {
+    const h = this.h.bind(this);
+    const out = h('b', {}, `${Math.round(settings[key] * 100)}%`);
+    return h('div', { class: 'setting-row' }, h('span', {}, label),
+      h('input', { type: 'range', min: 0, max: 100, value: Math.round(settings[key] * 100), class: 'fx-range',
+        oninput: (e) => { setSettings({ [key]: e.target.value / 100 }); out.textContent = `${e.target.value}%`; },
+        onchange: () => onDone?.() }), out);
   }
 
   // The whole session uses one language, so switching reloads the page.
@@ -1361,7 +1442,9 @@ export class App {
   paneTerminal() {
     const h = this.h.bind(this);
     const log = h('div', { class: 'log' });
-    for (const e of this.ctx.run.log) log.append(h('div', { class: 'entry ' + e.t }, e.text));
+    const seenN = this._logN ?? this.ctx.run.log.length;
+    this.ctx.run.log.forEach((e, i) => log.append(h('div', { class: 'entry ' + e.t + (i >= seenN ? ' fx-fade-up' : '') }, e.text)));
+    this._logN = this.ctx.run.log.length;
     setTimeout(() => { if (log.isConnected) log.scrollTop = log.scrollHeight; }, 0);
     const bar = h('div', { class: 'termbar' },
       h('button', { class: 'cmds-btn', onclick: () => this.openCatalog() }, this.ic('terminal'), ' CMDS'),
@@ -1375,7 +1458,7 @@ export class App {
     const active = NODE_PAGES.includes(this.view) ? 'terminal' : this.view;
     const row = h('div', { class: 'dock' });
     for (const [id, label] of TABS)
-      row.append(h('button', { class: 'dock-btn' + (id === active ? ' on' : ''), onclick: () => { this.view = id; this.overlay = null; if (id === 'profile') this.profileSub = null; this.render(); } },
+      row.append(h('button', { class: 'dock-btn' + (id === active ? ' on' + this.enterCls('dock', active, 'fx-dock-pop') : ''), onclick: () => { this.view = id; this.overlay = null; if (id === 'profile') this.profileSub = null; this.render(); } },
         h('span', { class: 'di' }, this.ic(TAB_ICON[id])), h('span', { class: 'dl' }, label)));
     return row;
   }
@@ -1396,7 +1479,7 @@ export class App {
     const h = this.h.bind(this);
     const o = this.overlay;
     const close = () => { this.overlay = null; this.render(); };
-    const sheet = h('div', { class: 'sheet', onclick: (e) => e.stopPropagation() }, h('div', { class: 'grab' }));
+    const sheet = h('div', { class: 'sheet' + this.enterCls('overlay', this.idOf(o), 'fx-slide-up'), onclick: (e) => e.stopPropagation() }, h('div', { class: 'grab' }));
     // skip empty slots (`cond && node`) instead of printing "null" / "0"
     const put = sheet.append.bind(sheet);
     sheet.append = (...kids) => put(...kids.filter((k) => k != null && k !== false && k !== 0));
@@ -1527,15 +1610,18 @@ export class App {
         sheet.append(h('button', { class: 'act dim', onclick: close }, 'BATAL'));
       }
     } else if (o.kind === 'result') {
-      sheet.append(h('h2', { style: 'color:var(--green)' }, 'TARGET SELESAI'),
+      const reward = h('b', { class: 'fx-count' }, String(o.res.reward));
+      const rep = h('b', { class: 'fx-count' }, String(o.res.rep));
+      if (this.enterCls('result', this.idOf(o), 'x')) requestAnimationFrame(() => { vfx.countUp(reward, 0, o.res.reward, 900); vfx.countUp(rep, 0, o.res.rep, 900); });
+      sheet.append(h('div', { class: 'fx-stamp' }, 'SELESAI'), h('h2', { style: 'color:var(--green)' }, 'TARGET SELESAI'),
         h('div', { class: 'file' }, o.res.text),
-        h('p', { style: 'color:var(--amber)' }, t('+{1} ◆   ·   +{2} rep', o.res.reward, o.res.rep)),
+        h('p', { style: 'color:var(--amber)' }, '+', reward, ' ◆   ·   +', rep, ' rep'),
         o.res.unlocked.length && h('p', { style: 'color:var(--cyan)' }, t('Tool terbuka: {1}', o.res.unlocked.map((id) => TOOLS[id].name).join(', '))),
         Object.keys(o.res.items || {}).length && h('p', { style: 'color:var(--ink)' }, t('Dapat: {1}', Object.entries(o.res.items).map(([id, n]) => `${tr(ITEMS[id].name)} ×${n}`).join(', '))),
         ...(o.res.notes || []).map((note) => h('p', { style: 'color:var(--cyan);font-size:12px' }, note)),
         h('p', { style: 'color:var(--muted);font-size:12px' }, 'Klien menawarkan kontrak perawatan harian — cek di Biro Kontrak.'),
         h('button', { class: 'act', onclick: close }, 'LANJUT'));
     }
-    return h('div', { class: 'overlay', onclick: close }, sheet);
+    return h('div', { class: 'overlay' + (o.kind === 'daystart' ? ' fx-sunrise' : ''), onclick: close }, sheet);
   }
 }
