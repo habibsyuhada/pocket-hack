@@ -126,6 +126,20 @@ export class App {
     buzz('heavy');
   }
 
+  // Android back button / Escape: unwind one level. Returns false when there is nothing left to close.
+  back() {
+    if (this.busy) return true;
+    if (this.overlay) { this.overlay = null; this.render(); return true; }
+    if (this.dlg) {
+      if (this.dlg.mode === 'gift' || this.dlg.mode === 'offers') this.dlgHub();
+      else this.dlgClose();
+      return true;
+    }
+    if (NODE_PAGES.includes(this.view)) { this.view = 'terminal'; this.render(); return true; }
+    if (this.view !== 'map') { this.view = 'map'; this.render(); return true; }
+    return false;
+  }
+
   // ---------- in-game notices (replace browser alert/confirm) ----------
   toast(msg, icon) {
     const id = (this._toastId = (this._toastId || 0) + 1);
@@ -818,9 +832,16 @@ export class App {
     inner.append(...cards);
 
     // start on the node you are connected to, a freshly revealed mission node, or the home hotspot
-    const focusId = run.current || this._centerOn || START_NODES[0];
-    const f = run.devices[focusId] || run.devices[START_NODES[0]];
-    this._mapCenter = { x: f.x, y: f.y };
+    const focusId = run.current || this._centerOn;
+    if (focusId && run.devices[focusId]) {
+      this._mapCenter = { x: run.devices[focusId].x, y: run.devices[focusId].y };
+      this._mapScale = 0.8;
+    } else {
+      // fresh start: frame the home hotspot together with the safehouse
+      const hub = run.devices[START_NODES[0]];
+      this._mapCenter = { x: (hub.x + home.x) / 2, y: (hub.y + home.y) / 2 };
+      this._mapScale = 0.7;
+    }
 
     const vp = h('div', { class: 'worldmap pan' }, inner,
       h('div', { class: 'zoom-btns' },
@@ -850,7 +871,7 @@ export class App {
     const inner = vp.querySelector('.map-inner');
     if (!this.mapView) {
       const r = vp.getBoundingClientRect();
-      const s = 0.8, c = this._mapCenter || { x: MAPW / 2, y: MAPH / 2 };
+      const s = this._mapScale || 0.8, c = this._mapCenter || { x: MAPW / 2, y: MAPH / 2 };
       this.mapView = { scale: s, x: r.width / 2 - c.x * s, y: r.height / 2 - c.y * s };
       this._centerOn = null;
     }

@@ -25,7 +25,7 @@ export const PLACE = {
   pasar_pos: [3, 12, 'selatan'], gudang_nas: [5, 12, 'selatan']
 };
 
-export const SAFEHOUSE_CELL = [4, 4];
+export const SAFEHOUSE_CELL = [3, 10];
 
 // Each NPC walks a 3-cell route, one cell per day. Cells are free of nodes.
 export const NPC_CELLS = {
