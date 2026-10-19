@@ -80,6 +80,8 @@ function buildCity() {
 
 export const CITY = buildCity();
 export { DISTRICTS };
+// bump when city content changes so saved runs are rebuilt (progress is carried over)
+export const CITY_VERSION = 1;
 export const START_NODES = ['tengah_hub'];           // known from day one
 
 export const missionOfNode = (id) => CITY.owner[id] || null;

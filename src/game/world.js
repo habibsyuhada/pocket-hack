@@ -1,58 +1,60 @@
 import { siteById } from '../sites/index.js';
+import { npcById, npcLevel, isVisible } from './npc.js';
 
-// Open-world map metadata. Each node references a site network in ../sites.
-// `x`/`y` are percentages on the city map. `unlockRep` gates discovery.
 export const CITY = { id: 'surabaya', name: 'Surabaya' };
 
-export const WORLD_NODES = [
-  { id: 's00', district: 'Tengah', x: 30, y: 68, difficulty: 1, repReward: 40, unlockRep: 0,
-    short: 'Warung kopi — kontrak latihan.' },
-  { id: 's02', district: 'Utara', x: 62, y: 34, difficulty: 2, repReward: 70, unlockRep: 30,
-    short: 'Gedung parkir — kamera plat.' },
-  { id: 's01', district: 'Barat', x: 20, y: 40, difficulty: 3, repReward: 120, unlockRep: 80,
-    short: 'Lab arsip — blueprint hilang.' },
-  { id: 's03', district: 'Selatan', x: 74, y: 72, difficulty: 4, repReward: 180, unlockRep: 160,
-    short: 'Bursa kripto — buku besar palsu.' }
+// Missions are handed out by NPCs. `giver` is the NPC, `minLevel` the
+// friendship level they need before they trust you with it.
+export const MISSIONS = [
+  { id: 's00', giver: 'laras', minLevel: 0, district: 'Tengah', difficulty: 1, repReward: 40, short: 'Kafe Senja — kontrak latihan.' },
+  { id: 's04', giver: 'laras', minLevel: 1, district: 'Tengah', difficulty: 1, repReward: 50, short: 'Warung Tini — kasir macet.' },
+  { id: 's02', giver: 'rani', minLevel: 0, district: 'Utara', difficulty: 2, repReward: 70, short: 'Gedung parkir — kamera plat.' },
+  { id: 's05', giver: 'rani', minLevel: 2, district: 'Timur', difficulty: 3, repReward: 100, short: 'Radio komunitas — siaran dibajak.' },
+  { id: 's06', giver: 'dimas', minLevel: 0, district: 'Timur', difficulty: 2, repReward: 70, short: 'Sekolah — arsip nilai terkunci.' },
+  { id: 's01', giver: 'dimas', minLevel: 1, district: 'Barat', difficulty: 3, repReward: 120, short: 'Lab arsip — blueprint hilang.' },
+  { id: 's03', giver: 'gun', minLevel: 0, district: 'Selatan', difficulty: 4, repReward: 180, short: 'Bursa kripto — buku besar palsu.' }
 ];
+// legacy name kept for callers that only need the list
+export const WORLD_NODES = MISSIONS;
 
 export const DIFF_LABEL = ['', '◍ Mudah', '◍◍ Sedang', '◍◍◍ Sulit', '◍◍◍◍ Berat'];
 
 export function nodeFor(id) {
-  const n = WORLD_NODES.find((x) => x.id === id);
+  const n = MISSIONS.find((x) => x.id === id);
   return n ? { ...n, site: siteById(id) } : null;
 }
 
-// A node is reachable (shown as a live pin) once the player's rep clears it,
-// or once it was discovered/cleared before. Locked nodes still show as a
-// dimmed "sinyal lemah" pin so the world feels larger than what's open.
+// A mission counts as accepted once taken from its giver (or cleared).
+export const isAccepted = (profile, id) => !!(profile.accepted?.[id] || profile.cleared[id]);
+
+// cleared | accepted | open (giver is known and trusts you) | locked
 export function nodeState(profile, id) {
-  const n = WORLD_NODES.find((x) => x.id === id);
-  if (!n) return 'hidden';
+  const m = MISSIONS.find((x) => x.id === id);
+  if (!m) return 'hidden';
   if (profile.cleared[id]) return 'cleared';
-  if (profile.rep >= n.unlockRep || profile.discovered[id] || profile.intel[id]) return 'open';
+  if (profile.accepted?.[id]) return 'accepted';
+  const npc = npcById(m.giver);
+  if (npc && isVisible(profile, npc) && npcLevel(profile, m.giver) >= m.minLevel) return 'open';
   return 'locked';
 }
 
 export function worldNodes(profile) {
-  return WORLD_NODES.map((n) => ({ ...n, site: siteById(n.id), state: nodeState(profile, n.id) }));
+  return MISSIONS.map((n) => ({ ...n, site: siteById(n.id), state: nodeState(profile, n.id) }));
 }
 
-// Jobs = the endings offered by each OPEN site, surfaced in the Job board.
+// Missions this NPC can hand out right now.
+export const offersFrom = (profile, npcId) => MISSIONS.filter((m) => m.giver === npcId && nodeState(profile, m.id) === 'open');
+// Missions of theirs still waiting on more friendship (for a polite refusal line).
+export const waitingOn = (profile, npcId) => MISSIONS.filter((m) => m.giver === npcId && nodeState(profile, m.id) === 'locked');
+
+// Jobs = missions that are not locked, for lists and tests.
 export function availableJobs(profile) {
-  const jobs = [];
-  for (const n of WORLD_NODES) {
-    const st = nodeState(profile, n.id);
-    if (st === 'locked') continue;
+  return MISSIONS.filter((n) => nodeState(profile, n.id) !== 'locked').map((n) => {
     const site = siteById(n.id);
-    jobs.push({
+    return {
       siteId: n.id, code: site.code, title: site.title, client: site.client,
       brief: site.brief, reward: site.reward, repReward: n.repReward,
       difficulty: n.difficulty, district: n.district, done: !!profile.cleared[n.id]
-    });
-  }
-  return jobs;
+    };
+  });
 }
-
-// A mission's nodes only appear on the map once it is accepted at the board.
-// Older saves (before the board existed) count progress as accepted.
-export const isAccepted = (profile, id) => !!(profile.accepted?.[id] || profile.cleared[id] || profile.runs?.[id]);

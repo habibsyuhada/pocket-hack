@@ -4,10 +4,14 @@ import { getActions, getChoices, exec, objectives, hint, endings, finish, LOCAL_
 import { CMD_META, GROUPS, groupCommands, commandTargets } from '../engine/commands.js';
 import { hasCmd, loadMs } from '../game/profile.js';
 import { DEFAULT_CMDS } from '../engine/commands.js';
-import { CITY, WORLD_NODES, DIFF_LABEL, nodeFor, worldNodes, isAccepted } from '../game/world.js';
+import { CITY as CITY_INFO, WORLD_NODES, DIFF_LABEL, nodeFor, worldNodes, isAccepted, offersFrom, waitingOn } from '../game/world.js';
+import { CITY as NET, START_NODES, CITY_VERSION, DISTRICTS } from '../city/index.js';
+import { MAPW, MAPH, cellXY, SAFEHOUSE_CELL } from '../city/layout.js';
+import { greetingFor, talkSceneFor, offerSceneFor, noOfferLine, giftLines } from '../game/dialogues.js';
+import { PLACEHOLDER, portraitSrc } from './portraits.js';
 import { MARKET, buy, canBuy, owned, priceFor } from '../game/market.js';
 import { ITEMS, KOPI_FOCUS, KOPI_PRICE, MISSION_ITEMS, addItem, addAll, removeItem, countOf, contractDrop } from '../game/items.js';
-import { NPCS, LEVEL_NAMES, AFF_STEPS, npcById, npcState, levelOf, levelProgress, isVisible, npcSpot, canTalk, canGift, talk, gift, missionBond } from '../game/npc.js';
+import { NPCS, LEVEL_NAMES, AFF_STEPS, npcById, npcState, npcLevel, levelOf, levelProgress, isVisible, npcSpot, canTalk, canGift, talk, gift, missionBond } from '../game/npc.js';
 import { eventFor, focusCostFor, restoreFocus, loadingMult, spendFocus, sleep, focusState, FOCUS_LABEL, seasonName } from '../game/time.js';
 import { perksFor } from '../game/perks.js';
 import { canContract, startContract, hasContract, pendingDays, payout, collect } from '../game/retainer.js';
@@ -16,7 +20,6 @@ import { saveProfile, loadProfile, clearProfile, buzz } from '../platform/storag
 import { iconSvg } from './icons.js';
 
 const TAB_ICON = { map: 'map', terminal: 'terminal', goals: 'target', market: 'market', profile: 'profile' };
-const MAPW = 1500, MAPH = 2000, CLUSTER = 420; // big open-world canvas (px) + per-site node cluster spread
 const MIN_SCALE = 0.25, MAX_SCALE = 1.8;
 // In-world messages when a command has nothing to act on (instead of a generic error).
 const NO_TARGET = {
@@ -43,9 +46,9 @@ export class App {
   constructor(root) {
     this.root = root;
     this.profile = newProfile();
-    this.runs = {};                  // siteId -> ctx; every site is live on the map, no jack-in
-    this.ctx = null;                 // ctx of the site whose node was touched last
-    this.goalSite = null;            // mission shown in the Goals tab
+    this.ctx = null;                 // { mission: city graph, run: shared run, profile }
+    this.goalSite = null;            // mission shown in the Goals tab / used for hints
+    this.dlg = null;                 // active dialogue scene
     this.view = 'map';               // map | terminal | goals | market | profile | files | system
     this.sel = { type: 'rig' };
     this.selSite = null;
@@ -66,49 +69,61 @@ export class App {
       this.profile.cmds = [...new Set([...(this.profile.cmds || []), ...DEFAULT_CMDS])];
     }
     this.intro = !saved;
-    const last = this.profile.lastSite;
-    if (last && siteById(last) && isAccepted(this.profile, last)) { this.ctx = this.ctxFor(last); this.goalSite = last; }
+    this.initWorld();
     this.render();
   }
 
   persist() { saveProfile(this.profile); }
   get cur() { return this.ctx?.run.current || null; }
 
-  // ---------- sites ----------
-  // Every site is live on the open-world map; its run is created lazily the
-  // first time one of its nodes is touched (or its mission is opened).
-  ctxFor(siteId) {
-    if (!this.runs[siteId]) {
-      const site = siteById(siteId);
-      // restore the saved run if it still matches this site's layout
-      const saved = this.profile.runs?.[siteId];
-      const ok = saved && saved.missionId === site.id && Object.keys(site.world.devices).every((id) => saved.devices?.[id]);
-      const ctx = { mission: site, run: ok ? saved : newRun(site), profile: this.profile };
-      (this.profile.runs ||= {})[siteId] = ctx.run;
-      if (ok) { this.runs[siteId] = ctx; return ctx; }
-      for (const id of site.entry) { const d = ctx.run.devices[id]; if (d) d.discovered = true; }
-      this.runs[siteId] = ctx;
-    }
-    return this.runs[siteId];
+  // ---------- the shared city run ----------
+  // One run for the whole city. It lives on the profile so it is saved with it.
+  initWorld() {
+    const p = this.profile;
+    const legacy = p.runs;                                   // old saves: one run per site
+    if (legacy) for (const id of Object.keys(legacy)) p.accepted[id] = true;
+    const valid = p.run && p.run.cityVer === CITY_VERSION && Object.keys(NET.world.devices).every((id) => p.run.devices?.[id]);
+    if (!valid) p.run = this.freshRun(p.run);
+    if (legacy) { for (const r of Object.values(legacy)) this.carryOver(p.run, r); delete p.runs; }
+    delete p.lastSite;
+    this.ctx = { mission: NET, run: p.run, profile: p };
+    const open = SITES.filter((m) => isAccepted(p, m.id) && !p.cleared[m.id]);
+    if (!this.goalSite || !isAccepted(p, this.goalSite)) this.goalSite = open.at(-1)?.id || null;
   }
 
+  freshRun(old) {
+    const p = this.profile;
+    const run = newRun(NET);
+    run.cityVer = CITY_VERSION;
+    for (const id of START_NODES) run.devices[id].discovered = true;
+    for (const m of SITES) if (isAccepted(p, m.id)) for (const e of m.entry) run.devices[e].discovered = true;
+    if (old?.devices) this.carryOver(run, old);
+    return run;
+  }
+
+  // Keeps progress when the city layout changes or an old per-site run is merged in.
+  carryOver(run, old) {
+    for (const k of ['clues', 'creds', 'flags', 'read']) for (const v of old[k] || []) if (!run[k].includes(v)) run[k].push(v);
+    for (const f of old.local || []) if (!run.local.some((l) => l.id === f.id)) run.local.push(f);
+    const order = ['none', 'guest', 'user', 'admin'];
+    for (const [id, d] of Object.entries(old.devices || {})) {
+      const n = run.devices[id];
+      if (!n) continue;
+      if (d.discovered) n.discovered = true;
+      if (order.indexOf(d.access) > order.indexOf(n.access)) n.access = d.access;
+    }
+  }
+
+  // Taking a mission reveals its start node on the map (no rig scan needed).
   acceptMission(siteId) {
+    const m = siteById(siteId);
     this.profile.accepted[siteId] = true;
-    this.focus(siteId);
-    this._centerOn = siteId;
+    for (const e of m.entry) this.ctx.run.devices[e].discovered = true;
+    this.goalSite = siteId;
+    this._centerOn = m.entry[0];
     this.mapView = null;
-    this.overlay = null;
-    this.view = 'map';
     this.persist();
     buzz('heavy');
-    this.render();
-  }
-
-  focus(siteId) {
-    this.ctx = this.ctxFor(siteId);
-    this.profile.discovered[siteId] = true;
-    this.goalSite = siteId;
-    this.profile.lastSite = siteId;
   }
 
   // ---------- in-game notices (replace browser alert/confirm) ----------
@@ -244,8 +259,8 @@ export class App {
 
   // Opening the file server on a contracted site's entry node is the daily chore.
   collectRetainer() {
-    const site = this.ctx?.mission;
-    if (!site || !hasContract(this.profile, site.id) || this.cur !== site.entry[0]) return null;
+    const site = SITES.find((m) => hasContract(this.profile, m.id) && m.entry[0] === this.cur);
+    if (!site) return null;
     const got = collect(this.profile, site.id, site, perksFor(this.profile));
     if (!got) return null;
     const drop = contractDrop(site.id, this.profile.day);
@@ -332,8 +347,7 @@ export class App {
     const k = meta.kind;
     if (k === 'soon') { this.toast(`${cmd}: segera hadir di update berikutnya.`); return; }
     if (k === 'map') { this.overlay = null; this.view = 'map'; this.render(); return; }
-    if (!this.ctx) { this.toast('Pilih node di peta dulu.'); return; }
-    if (k === 'scan') { if (!this.ctx) return this.toast('Pilih node di peta dulu.'); this.overlay = null; this.runCommand('SCAN', this.cur ? { type: 'device', id: this.cur } : { type: 'rig' }); return; }
+    if (k === 'scan') { this.overlay = null; this.runCommand('SCAN', this.cur ? { type: 'device', id: this.cur } : { type: 'rig' }); return; }
     if (k === 'disconnect') { if (!this.cur) return this.toast(notConnected('DISCONNECT')); this.overlay = null; this.runCommand('DISCONNECT', { type: 'rig' }); return; }
     if (k === 'files') { if (!this.cur) return this.toast(notConnected('FILES')); this.overlay = null; this.openPage('files', 'LS'); return; }
     if (k === 'system') { if (!this.cur) return this.toast(notConnected('SERVICES')); this.overlay = null; this.openPage('system', 'PS'); return; }
@@ -359,15 +373,16 @@ export class App {
     this.runCommand(cmd, target);
   }
 
-  submitSite(ctx, endingId) {
-    const node = nodeFor(ctx.mission.id);
-    const first = !this.profile.cleared[ctx.mission.id];
+  submitSite(mission, endingId) {
+    const ctx = { ...this.ctx, mission };
+    const node = nodeFor(mission.id);
+    const first = !this.profile.cleared[mission.id];
     const mods = perksFor(this.profile);
     const res = finish(ctx, endingId, { repReward: node?.repReward || 0, creditMult: mods.creditMult, repMult: mods.repMult });
     if (first) {
-      addAll(this.profile, MISSION_ITEMS[ctx.mission.id]);
-      res.items = MISSION_ITEMS[ctx.mission.id] || {};
-      res.notes = missionBond(this.profile, ctx.mission.id);
+      addAll(this.profile, MISSION_ITEMS[mission.id]);
+      res.items = MISSION_ITEMS[mission.id] || {};
+      res.notes = missionBond(this.profile, mission.id);
     }
     this.persist();
     this.overlay = { kind: 'result', res };
@@ -381,7 +396,7 @@ export class App {
     this.render();
   }
 
-  resetGame() { this.profile = newProfile(); clearProfile(); this.runs = {}; this.ctx = null; this.goalSite = null; this.mapView = null; this.view = 'map'; this.intro = true; this.render(); }
+  resetGame() { this.profile = newProfile(); clearProfile(); this.goalSite = null; this.dlg = null; this.initWorld(); this.mapView = null; this.view = 'map'; this.intro = true; this.render(); }
 
   // ---------- DOM ----------
   ic(name) { return this.h('span', { class: 'ic-svg', html: iconSvg(name) }); }
@@ -408,11 +423,13 @@ export class App {
     el.append(pane);
     if (this.showHint && this.ctx) el.append(this.h('div', { class: 'hint' }, '💡 ', this.hintText));
     el.append(this.dock());
+    if (this.dlg) el.append(this.vDialogue());
     if (this.overlay) el.append(this.vOverlay());
     if (this.busy) el.append(this.vLoading());
     if (this.notice) el.append(this.vToast());
     this.root.replaceChildren(el);
     if (this.view === 'map') this.setupMap();
+    if (this.dlg) this.startTyping();
   }
 
   vToast() {
@@ -429,12 +446,233 @@ export class App {
         h('small', {}, 'memproses…')));
   }
 
+  // ---------- dialogue (visual-novel style) ----------
+  // A scene = a stack of lines you tap through, then optional choices. The
+  // NPC's standing picture (ui/portraits.js) is drawn behind the text box.
+  openDialogue(npcId) {
+    const lv = npcLevel(this.profile, npcId);
+    this.dlg = { npc: npcId, mode: 'hub', bonus: 0 };
+    this.dlgSay({ who: 'npc', text: greetingFor(npcId, lv, this.profile.day), mood: 'normal' });
+  }
+
+  dlgSay(line) {
+    this.dlg.line = line;
+    this.dlg.key = (this._dk = (this._dk || 0) + 1);
+    this.render();
+  }
+
+  dlgPlay(lines, onEnd) {
+    this.dlg.mode = 'scene';
+    this.dlg.lines = lines;
+    this.dlg.i = 0;
+    this.dlg.onEnd = onEnd;
+    this.dlgSay(lines[0]);
+  }
+
+  // Tap on the text box: finish the typing first, then go to the next line.
+  dlgAdvance() {
+    const d = this.dlg;
+    if (!d || this.busy) return;
+    if (this.finishTyping()) return;
+    if (d.mode !== 'scene') return;
+    d.i += 1;
+    if (d.i < d.lines.length) this.dlgSay(d.lines[d.i]);
+    else d.onEnd();
+  }
+
+  dlgHub(line) {
+    this.dlg.mode = 'hub';
+    this.dlgSay(line || this.dlg.line);
+  }
+
+  dlgTalk() {
+    const id = this.dlg.npc;
+    if (!canTalk(this.profile, id)) return this.toast('Sudah ngobrol hari ini. Besok lagi.');
+    this.withLoading('NGOBROL', () => {
+      const st = npcState(this.profile, id);
+      const scene = talkSceneFor(id, levelOf(st.aff), this.profile.day, st.aff);
+      this.dlg.bonus = 0;
+      this.dlgPlay(scene.lines, () => {
+        if (!scene.choice) return this.dlgEndTalk();
+        this.dlg.mode = 'choice';
+        this.dlg.choice = scene.choice;
+        this.dlg.key = (this._dk += 1);
+        this.render();
+      });
+    }, { cost: 2, ms: 500 });
+  }
+
+  dlgPick(option) {
+    this.dlg.bonus += option.bonus;
+    this.dlg.choice = null;
+    this.dlgPlay(option.lines, () => this.dlgEndTalk());
+  }
+
+  dlgEndTalk() {
+    const id = this.dlg.npc;
+    const r = talk(this.profile, id, perksFor(this.profile), this.dlg.bonus);
+    this.persist();
+    this.dlgHub();
+    const msgs = [...(r?.kopi ? ['+1 Kopi Susu'] : []), ...(r?.notes || [])];
+    if (msgs.length) this.toast(msgs.join(' · '), 'hint');
+  }
+
+  dlgGiftOpen() {
+    if (!canGift(this.profile, this.dlg.npc)) return this.toast('Sudah memberi hadiah hari ini.');
+    this.dlg.mode = 'gift';
+    this.dlg.key = (this._dk += 1);
+    this.render();
+  }
+
+  dlgGift(itemId) {
+    const id = this.dlg.npc;
+    this.withLoading('HADIAH', () => {
+      const r = gift(this.profile, id, itemId);
+      this.persist();
+      this.dlgPlay(giftLines(id, !!r?.liked), () => this.dlgHub());
+      if (r?.notes.length) this.toast(r.notes.join(' · '), 'hint');
+    }, { cost: 1, ms: 400 });
+  }
+
+  dlgOffers() {
+    const id = this.dlg.npc;
+    const jobs = offersFrom(this.profile, id);
+    if (!jobs.length) {
+      const waiting = waitingOn(this.profile, id).length > 0;
+      return this.dlgHub({ who: 'npc', text: noOfferLine(id, waiting ? 'locked' : 'none'), mood: waiting ? 'serious' : 'normal' });
+    }
+    if (jobs.length === 1) return this.dlgOffer(jobs[0].id);
+    this.dlg.mode = 'offers';
+    this.dlg.jobs = jobs;
+    this.dlg.key = (this._dk += 1);
+    this.render();
+  }
+
+  dlgOffer(missionId) {
+    const id = this.dlg.npc;
+    const offer = offerSceneFor(id, missionId);
+    this.dlgPlay(offer.lines, () => {
+      this.dlg.mode = 'decide';
+      this.dlg.offer = { missionId, ...offer };
+      this.dlg.key = (this._dk += 1);
+      this.render();
+    });
+  }
+
+  dlgDecide(accept) {
+    const o = this.dlg.offer;
+    this.dlg.offer = null;
+    if (accept) {
+      this.acceptMission(o.missionId);
+      this.dlgPlay(o.onAccept, () => this.dlgHub());
+      this.toast(`Misi diterima: ${siteById(o.missionId).title}. Lihat tab Goals.`, 'target');
+    } else {
+      this.dlgPlay(o.onDecline, () => this.dlgHub());
+    }
+  }
+
+  dlgClose() {
+    clearInterval(this._typeT);
+    this.dlg = null;
+    this.render();
+  }
+
+  // typewriter effect for the line currently shown
+  startTyping() {
+    clearInterval(this._typeT);
+    const el = this.root.querySelector('.dlg-text');
+    if (!el) return;
+    const full = el.dataset.full || '';
+    if (this.dlg.typedKey === this.dlg.key) { el.textContent = full; return; }
+    let n = 0;
+    el.textContent = '';
+    this._typeT = setInterval(() => {
+      n += 1;
+      el.textContent = full.slice(0, n);
+      if (n >= full.length) this.endTyping();
+    }, 18);
+  }
+
+  endTyping() {
+    clearInterval(this._typeT);
+    this._typeT = null;
+    this.dlg.typedKey = this.dlg.key;
+    this.root.querySelectorAll('.dlg-next, .dlg-menu').forEach((e) => e.classList.add('on'));
+  }
+
+  finishTyping() {
+    if (!this._typeT || this.dlg.typedKey === this.dlg.key) return false;
+    const el = this.root.querySelector('.dlg-text');
+    if (el) el.textContent = el.dataset.full || '';
+    this.endTyping();
+    return true;
+  }
+
+  vDialogue() {
+    const h = this.h.bind(this);
+    const d = this.dlg, npc = npcById(d.npc), st = npcState(this.profile, d.npc), lv = levelOf(st.aff);
+    const you = d.line.who === 'you';
+    const ph = PLACEHOLDER[d.npc] || { color: '#6a7', initial: '?' };
+    const src = portraitSrc(d.npc, d.line.mood);
+    const ready = d.typedKey === d.key ? ' on' : '';
+    const portrait = src
+      ? h('img', { class: 'portrait-img' + (you ? ' dim' : ''), src, alt: npc.name })
+      : h('div', { class: 'portrait-ph' + (you ? ' dim' : ''), style: `--pc:${ph.color}` },
+        h('div', { class: 'ph-body' }), h('div', { class: 'ph-letter' }, ph.initial), h('small', {}, 'gambar belum ada'));
+
+    // what sits under the text box depends on the mode
+    let menu;
+    if (d.mode === 'hub') {
+      const talked = !canTalk(this.profile, d.npc), gifted = !canGift(this.profile, d.npc);
+      const jobs = offersFrom(this.profile, d.npc).length;
+      menu = h('div', { class: 'dlg-menu' + ready },
+        h('button', { class: 'dlg-opt' + (talked ? ' off' : ''), onclick: (e) => { e.stopPropagation(); this.dlgTalk(); } }, talked ? 'Ngobrol (sudah hari ini)' : 'Ngobrol · ⚡2'),
+        h('button', { class: 'dlg-opt' + (gifted ? ' off' : ''), onclick: (e) => { e.stopPropagation(); this.dlgGiftOpen(); } }, gifted ? 'Beri hadiah (sudah hari ini)' : 'Beri hadiah'),
+        h('button', { class: 'dlg-opt' + (jobs ? ' hot' : ''), onclick: (e) => { e.stopPropagation(); this.dlgOffers(); } }, jobs ? 'Ada kerjaan? ★' : 'Ada kerjaan?'),
+        h('button', { class: 'dlg-opt dim', onclick: (e) => { e.stopPropagation(); this.dlgClose(); } }, 'Pergi'));
+    } else if (d.mode === 'choice') {
+      menu = h('div', { class: 'dlg-menu' + ready }, ...d.choice.options.map((o) =>
+        h('button', { class: 'dlg-opt', onclick: (e) => { e.stopPropagation(); this.dlgPick(o); } }, o.label)));
+    } else if (d.mode === 'offers') {
+      menu = h('div', { class: 'dlg-menu' + ready },
+        ...d.jobs.map((j) => h('button', { class: 'dlg-opt hot', onclick: (e) => { e.stopPropagation(); this.dlgOffer(j.id); } }, `${siteById(j.id).code} · ${siteById(j.id).title}`)),
+        h('button', { class: 'dlg-opt dim', onclick: (e) => { e.stopPropagation(); this.dlgHub(); } }, 'Kembali'));
+    } else if (d.mode === 'decide') {
+      const site = siteById(d.offer.missionId);
+      menu = h('div', { class: 'dlg-menu' + ready },
+        h('div', { class: 'dlg-offer' }, h('b', {}, `${site.code} · ${site.title}`), h('span', {}, `+${site.reward} ◆`)),
+        h('button', { class: 'dlg-opt hot', onclick: (e) => { e.stopPropagation(); this.dlgDecide(true); } }, d.offer.accept),
+        h('button', { class: 'dlg-opt dim', onclick: (e) => { e.stopPropagation(); this.dlgDecide(false); } }, d.offer.decline));
+    } else if (d.mode === 'gift') {
+      const have = Object.keys(ITEMS).filter((id) => countOf(this.profile, id) > 0);
+      menu = h('div', { class: 'dlg-menu on' },
+        h('div', { class: 'dlg-offer' }, h('b', {}, 'Pilih hadiah'), h('span', {}, `favorit: ${ITEMS[npc.likes].name}`)),
+        ...(have.length ? have : []).map((id) => h('button', { class: 'dlg-opt', onclick: (e) => { e.stopPropagation(); this.dlgGift(id); } },
+          `${ITEMS[id].name} ×${countOf(this.profile, id)}${id === npc.likes ? ' ♥' : ''}`)),
+        !have.length && h('div', { class: 'dlg-offer' }, h('span', {}, 'Tasmu kosong. Selesaikan misi atau kerjakan kontrak untuk dapat barang.')),
+        h('button', { class: 'dlg-opt dim', onclick: (e) => { e.stopPropagation(); this.dlgHub(); } }, 'Kembali'));
+    }
+
+    return h('div', { class: 'dlg' },
+      h('div', { class: 'dlg-top' },
+        h('div', { class: 'dlg-who' }, h('b', {}, npc.name), h('small', {}, `${npc.role} · ${LEVEL_NAMES[lv]}`)),
+        h('div', { class: 'dlg-bar' }, h('i', { style: `width:${Math.round(levelProgress(st.aff) * 100)}%` })),
+        h('button', { class: 'dlg-x', title: 'Info & keuntungan', onclick: () => { this.overlay = { kind: 'npcinfo', id: d.npc }; this.render(); } }, 'i'),
+        h('button', { class: 'dlg-x', title: 'Tutup', onclick: () => this.dlgClose() }, '✕')),
+      h('div', { class: 'dlg-stage' }, portrait),
+      h('div', { class: 'dlg-box', onclick: () => this.dlgAdvance() },
+        h('div', { class: 'dlg-name' + (you ? ' you' : '') }, you ? 'Kamu' : npc.name),
+        h('div', { class: 'dlg-text', 'data-full': d.line.text }, d.line.text),
+        d.mode === 'scene' && h('div', { class: 'dlg-next' + ready }, '▾'),
+        menu));
+  }
+
   // ---------- intro ----------
   vIntro() {
     const h = this.h.bind(this);
     return h('div', { class: 'intro' },
       h('div', { class: 'intro-logo' }, 'POCKET', h('span', {}, 'HACK')),
-      h('p', { class: 'intro-tag' }, `Kota ${CITY.name}. Sebuah terminal, sebuah rig, dan jaringan yang menunggu diselidiki.`),
+      h('p', { class: 'intro-tag' }, `Kota ${CITY_INFO.name}. Sebuah terminal, sebuah rig, dan jaringan yang menunggu diselidiki.`),
       h('p', { class: 'intro-note' }, 'Semua jaringan, perangkat, dan celah di game ini fiktif. Ini puzzle investigasi, bukan alat peretasan nyata.'),
       h('button', { class: 'intro-go', onclick: () => { this.intro = false; this.persist(); this.render(); } }, '▸ MASUK KOTA'));
   }
@@ -442,16 +680,16 @@ export class App {
   // ---------- status strip ----------
   statusStrip() {
     const h = this.h.bind(this);
-    if (!this.ctx || this.view === 'map' || this.view === 'market' || this.view === 'profile') {
+    if (this.view === 'map' || this.view === 'market' || this.view === 'profile') {
       return h('div', { class: 'statusbar' },
-        h('span', { class: 'loc' }, '◉ ', CITY.name.toUpperCase()),
+        h('span', { class: 'loc' }, '◉ ', CITY_INFO.name.toUpperCase()),
         h('span', { class: 'spacer' }),
         h('span', { class: 'day' }, `H${this.profile.day}`),
         this.focusPill(),
         h('span', { class: 'cr' }, '◆ ', String(this.profile.credits)));
     }
-    if (NODE_PAGES.includes(this.view)) {
-      const d = device(this.ctx.run, this.cur);
+    const d = this.cur ? device(this.ctx.run, this.cur) : null;
+    if (NODE_PAGES.includes(this.view) && d) {
       return h('div', { class: 'statusbar' },
         h('button', { class: 'back', title: 'Kembali ke terminal', onclick: () => { this.view = 'terminal'; this.render(); } }, this.ic('back')),
         h('span', { class: 'loc' }, d.name),
@@ -460,11 +698,9 @@ export class App {
         h('span', { class: 'lv' }, LEVEL_LABEL[d.access]),
         this.hintBtn());
     }
-    const site = this.ctx.mission;
-    const node = nodeFor(site.id);
     return h('div', { class: 'statusbar' },
-      h('span', { class: 'loc' }, site.code, ' ', site.title),
-      this.cur && h('span', { class: 'lv' }, LEVEL_LABEL[device(this.ctx.run, this.cur).access]),
+      h('span', { class: 'loc' }, d ? d.name : this.view === 'goals' ? 'Misi' : 'Terminal'),
+      d && h('span', { class: 'lv' }, LEVEL_LABEL[d.access]),
       h('span', { class: 'spacer' }),
       this.focusPill(),
       h('span', { class: 'cr' }, '◆ ', String(this.profile.credits)),
@@ -484,11 +720,12 @@ export class App {
   // Hints cost credits; the text is fixed at the moment it is bought.
   toggleHint() {
     if (this.showHint) { this.showHint = false; this.render(); return; }
-    if (!this.ctx) return this.toast('Terima misi dan pilih node dulu untuk meminta hint.');
+    const mission = this.goalSite ? siteById(this.goalSite) : null;
+    if (!mission) return this.toast('Terima sebuah misi dulu untuk meminta hint.');
     const cost = perksFor(this.profile).hintCost;
     if (this.profile.credits < cost) return this.toast(`Kredit tidak cukup. Hint butuh ◆ ${cost}.`);
     this.profile.credits -= cost;
-    this.hintText = hint(this.ctx);
+    this.hintText = hint({ ...this.ctx, mission });
     this.showHint = true;
     this.persist();
     this.render();
@@ -499,20 +736,12 @@ export class App {
     if (this.view === 'market') return this.paneMarket();
     if (this.view === 'profile') return this.paneProfile();
     if (this.view === 'map') return this.paneMap();
-    if (!this.ctx) return this.emptyNeedJack();
     if (this.view === 'terminal') return this.paneTerminal();
     if (this.view === 'goals') return this.paneObjectives();
     if (this.view === 'files') return this.paneFiles();
     if (this.view === 'system') return this.paneSystem();
     if (this.view === 'control') return this.paneControl();
     return this.paneMap();
-  }
-
-  emptyNeedJack() {
-    const h = this.h.bind(this);
-    return [h('div', { class: 'empty', style: 'margin-top:40px' },
-      'Belum ada node dipilih.\nTerima sebuah misi di peta, lalu ketuk node-nya.'),
-      h('button', { class: 'jackin', style: 'max-width:260px;margin:14px auto 0;display:block', onclick: () => { this.view = 'map'; this.render(); } }, '▸ KE PETA')];
   }
 
   // ===== unified map: city targets + (when jacked in) network nodes =====
@@ -526,81 +755,78 @@ export class App {
       st && h('div', { class: 'st ' + (stCls || '') }, st));
   }
 
-  // One big pannable/zoomable open-world canvas. Every site's nodes live on it
-  // at once — no jack-in. Missions are tracked in Goals, independent of the map.
+  // One big pannable/zoomable open-world canvas: the whole city graph. Only
+  // nodes you have discovered are drawn; links appear between discovered pairs.
   paneMap() {
     const h = this.h.bind(this);
+    const run = this.ctx.run;
     const inner = h('div', { class: 'map-inner', style: `width:${MAPW}px;height:${MAPH}px` });
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('class', 'edge'); svg.setAttribute('width', MAPW); svg.setAttribute('height', MAPH);
-    const line = (a, b, dashed) => {
+    const drawn = new Set();
+    const line = (a, b) => {
+      const key = [a.id, b.id].sort().join('|');
+      if (drawn.has(key)) return;
+      drawn.add(key);
       const ln = document.createElementNS('http://www.w3.org/2000/svg', 'line');
       ln.setAttribute('x1', a.x); ln.setAttribute('y1', a.y); ln.setAttribute('x2', b.x); ln.setAttribute('y2', b.y);
-      if (dashed) ln.setAttribute('stroke-dasharray', '4 6');
       svg.append(ln);
     };
     inner.append(svg);
 
-    const sites = worldNodes(this.profile);
+    const known = Object.values(run.devices).filter((d) => d.discovered);
+    for (const d of known) for (const l of d.links || []) { const t = run.devices[l]; if (t?.discovered) line(d, t); }
+
+    // district names appear once you know a node there
+    const seen = new Set(known.map((d) => d.district));
+    for (const dist of DISTRICTS) {
+      if (!seen.has(dist.id)) continue;
+      const p = cellXY(dist.at);
+      inner.append(h('div', { class: 'district-tag', style: `left:${p.x}px;top:${p.y}px` }, dist.name));
+    }
+
     const cards = [];
-    let center = null;
-    const SAFEHOUSE = { x: 750, y: 1000 };
-    cards.push(this.nodeCardPx({ cls: 'node-target safehouse', cx: SAFEHOUSE.x, cy: SAFEHOUSE.y, icon: 'rig', title: 'SAFEHOUSE',
+    const home = cellXY(SAFEHOUSE_CELL);
+    cards.push(this.nodeCardPx({ cls: 'node-target safehouse', cx: home.x, cy: home.y, icon: 'rig', title: 'SAFEHOUSE',
       sub: `Hari ${this.profile.day} · ${seasonName(this.profile.day)}`, st: 'ISTIRAHAT', stCls: 'a',
       onclick: () => { this.overlay = { kind: 'safehouse' }; this.render(); } }));
     for (const npc of NPCS) {
       if (!isVisible(this.profile, npc)) continue;
       const pos = npcSpot(npc, this.profile.day), lv = levelOf(npcState(this.profile, npc.id).aff);
+      const jobs = offersFrom(this.profile, npc.id).length;
       cards.push(this.nodeCardPx({ cls: 'node-target npc', cx: pos.x, cy: pos.y, icon: 'profile', title: npc.name, sub: npc.role,
-        st: `${LEVEL_NAMES[lv]}${canTalk(this.profile, npc.id) ? ' · ●' : ''}`, stCls: canTalk(this.profile, npc.id) ? 'a' : '',
-        onclick: () => { this.overlay = { kind: 'npc', id: npc.id }; this.render(); } }));
+        st: jobs ? `${LEVEL_NAMES[lv]} · ADA KERJAAN` : `${LEVEL_NAMES[lv]}${canTalk(this.profile, npc.id) ? ' · ●' : ''}`,
+        stCls: jobs || canTalk(this.profile, npc.id) ? 'a' : '',
+        onclick: () => this.openDialogue(npc.id) }));
     }
-    for (const n of sites) {
-      const base = { x: (n.x / 100) * MAPW, y: (n.y / 100) * MAPH };
-      const acc = isAccepted(this.profile, n.id), locked = n.state === 'locked', cleared = n.state === 'cleared';
-      const mpos = { x: base.x, y: base.y - CLUSTER * 0.5 };   // mission node sits above its device cluster
-      if (!center && !locked && !cleared) center = acc ? base : mpos;
-      if (this._centerOn === n.id) center = base;
-      // one node = one mission: the mission node sits at the heart of its site
-      if (!cleared) cards.push(this.nodeCardPx({
-        cls: 'node-target' + (locked ? ' off' : '') + (cleared ? ' done' : '') + (acc && !cleared ? ' live' : ''),
-        cx: mpos.x, cy: mpos.y, icon: 'target',
-        title: locked ? '???' : n.site.title,
-        sub: locked ? 'sinyal lemah' : `${n.site.code} · ${n.district}`,
-        st: locked ? 'TERKUNCI' : cleared ? 'SELESAI' : acc ? 'AKTIF' : 'MISI BARU',
-        stCls: locked ? '' : 'a',
-        onclick: () => {
-          if (locked) { this.toast('Sinyal lemah. Naikkan reputasi atau beli intel untuk membuka misi ini.'); return; }
-          if (acc) { this.focus(n.id); this.view = 'goals'; this.render(); return; }
-          this.overlay = { kind: 'mission', id: n.id }; this.render();
-        }
+    const contractAt = (id) => SITES.find((m) => hasContract(this.profile, m.id) && m.entry[0] === id);
+    for (const d of known) {
+      const mid = NET.owner[d.id];                       // mission that owns this node, if any
+      const cleared = mid && this.profile.cleared[mid];
+      const active = mid && isAccepted(this.profile, mid) && !cleared;
+      const cur = run.current === d.id;
+      const rut = contractAt(d.id);
+      const due = rut && pendingDays(this.profile, rut.id) > 0;
+      cards.push(this.nodeCardPx({
+        cls: (d.hub ? 'hub ' : '') + (cleared ? 'm-done' : active ? 'm-active' : '') + (cur ? ' cur' : '') + (d.online ? '' : ' off'),
+        cx: d.x, cy: d.y, icon: d.kind, title: d.name, sub: d.addr,
+        st: due ? `RUTIN ◆${payout(this.profile, rut.id, rut, perksFor(this.profile))}` : d.access !== 'none' ? LEVEL_LABEL[d.access] : !d.online ? 'OFFLINE' : d.statusText || 'TERLIHAT',
+        stCls: due ? 'due' : d.access !== 'none' ? 'a' : d.online && !d.statusText ? '' : 'o',
+        onclick: () => this.tapObject({ type: 'device', id: d.id })
       }));
-      if (!acc) continue;
-      const ctx = this.ctxFor(n.id), run = ctx.run;
-      const dpos = (d) => ({ x: base.x + ((d.x - 50) / 100) * CLUSTER, y: base.y + ((d.y - 50) / 100) * CLUSTER });
-      const devs = Object.values(run.devices).filter((d) => d.discovered);
-      for (const d of devs) for (const l of d.links || []) { const t = run.devices[l]; if (t?.discovered) line(dpos(d), dpos(t)); }
-      if (!cleared) for (const id of n.site.entry) { const e = run.devices[id]; if (e?.discovered) line(mpos, dpos(e), true); }
-      for (const d of devs) {
-        const cur = run.current === d.id, p = dpos(d);
-        const due = d.id === n.site.entry[0] && hasContract(this.profile, n.id) && pendingDays(this.profile, n.id) > 0;
-        cards.push(this.nodeCardPx({
-          cls: (cleared ? 'm-done' : 'm-active') + (cur ? ' cur' : '') + (d.online ? '' : ' off'),
-          cx: p.x, cy: p.y, icon: d.kind, title: d.name, sub: d.addr,
-          st: due ? `RUTIN ◆${payout(this.profile, n.id, n.site, perksFor(this.profile))}` : d.access !== 'none' ? LEVEL_LABEL[d.access] : !d.online ? 'OFFLINE' : d.statusText || 'TERLIHAT',
-          stCls: due ? 'due' : d.access !== 'none' ? 'a' : d.online && !d.statusText ? '' : 'o',
-          onclick: () => { this.focus(n.id); this.tapObject({ type: 'device', id: d.id }); }
-        }));
-      }
     }
     inner.append(...cards);
-    this._mapCenter = center || { x: MAPW * 0.3, y: MAPH * 0.68 };
+
+    // start on the node you are connected to, a freshly revealed mission node, or the home hotspot
+    const focusId = run.current || this._centerOn || START_NODES[0];
+    const f = run.devices[focusId] || run.devices[START_NODES[0]];
+    this._mapCenter = { x: f.x, y: f.y };
 
     const vp = h('div', { class: 'worldmap pan' }, inner,
       h('div', { class: 'zoom-btns' },
         h('button', { class: 'zoom-btn', onclick: () => this.zoomBy(1.25) }, '+'),
         h('button', { class: 'zoom-btn', onclick: () => this.zoomBy(0.8) }, '−')),
-      h('div', { class: 'map-tag' }, `◉ ${CITY.name} · H${this.profile.day} · ${seasonName(this.profile.day)}`,
+      h('div', { class: 'map-tag' }, `◉ ${CITY_INFO.name} · H${this.profile.day} · ${seasonName(this.profile.day)}`,
         perksFor(this.profile).event && h('b', { class: 'ev' }, `★ ${perksFor(this.profile).event.name}`)));
     return [vp];
   }
@@ -744,19 +970,21 @@ export class App {
   paneObjectives() {
     const h = this.h.bind(this);
     const open = worldNodes(this.profile).filter((n) => isAccepted(this.profile, n.id));
-    if (!open.length) return [this.h('div', { class: 'empty', style: 'margin-top:40px' }, 'Belum ada misi diterima.\nKetuk node misi di peta untuk menerimanya.')];
-    if (!this.goalSite || !open.some((n) => n.id === this.goalSite)) this.goalSite = open[0]?.id;
-    const ctx = this.ctxFor(this.goalSite);
+    if (!open.length) return [h('div', { class: 'empty', style: 'margin-top:40px' }, 'Belum ada misi diterima.\nTemui seseorang di peta dan tanyakan "ada kerjaan?".')];
+    if (!this.goalSite || !open.some((n) => n.id === this.goalSite)) this.goalSite = open.at(-1).id;
+    const mission = siteById(this.goalSite);
+    const ctx = { ...this.ctx, mission };
     const tabs = h('div', { class: 'mission-tabs' });
     for (const n of open)
-      tabs.append(h('button', { class: 'mission-tab' + (n.id === this.goalSite ? ' on' : ''), onclick: () => { this.goalSite = n.id; this.ctx = this.ctxFor(n.id); this.render(); } },
+      tabs.append(h('button', { class: 'mission-tab' + (n.id === this.goalSite ? ' on' : ''), onclick: () => { this.goalSite = n.id; this.showHint = false; this.render(); } },
         n.site.code, n.state === 'cleared' && ' ✓'));
-    const node = nodeFor(ctx.mission.id);
+    const node = nodeFor(mission.id);
     const objs = objectives(ctx);
     const anyMain = objs.filter((o) => o.main).every((o) => o.done);
     const out = [tabs,
-      h('div', { class: 'section-h' }, `${ctx.mission.title} · ${node.district} · ${DIFF_LABEL[node.difficulty]}`),
-      h('div', { style: 'color:var(--muted);font-size:13px;margin-bottom:14px' }, ctx.mission.brief)];
+      h('div', { class: 'section-h' }, `${mission.title} · ${node.district} · ${DIFF_LABEL[node.difficulty]}`),
+      h('div', { style: 'color:var(--muted);font-size:13px;margin-bottom:6px' }, mission.client),
+      h('div', { style: 'color:var(--muted);font-size:13px;margin-bottom:14px' }, mission.brief)];
     for (const o of objs) {
       out.push(h('div', { class: 'obj' },
         h('div', { class: 'ic', style: o.done ? 'color:var(--green);border-color:var(--green-dim)' : '' }, o.done ? '✓' : '○'),
@@ -765,10 +993,10 @@ export class App {
     }
     if (anyMain) {
       out.push(h('div', { class: 'section-h', style: 'margin-top:18px' }, 'Selesaikan & serahkan'));
-      const first = !this.profile.cleared[ctx.mission.id];
+      const first = !this.profile.cleared[mission.id];
       for (const e of endings(ctx)) {
         const cr = first ? e.reward : Math.round(e.reward / 4);
-        out.push(h('button', { class: 'card', disabled: !e.available, onclick: () => e.available && this.submitSite(ctx, e.id) },
+        out.push(h('button', { class: 'card', disabled: !e.available, onclick: () => e.available && this.submitSite(mission, e.id) },
           h('h3', {}, e.label),
           h('div', { class: 'foot' }, h('span', { class: 'reward' }, `+${cr} ◆ · +${first ? (node?.repReward || 0) : Math.round((node?.repReward || 0) / 4)} rep`))));
       }
@@ -900,30 +1128,15 @@ export class App {
           h('b', {}, a.cmd), a.enabled ? h('span', {}, '▸') : h('small', { class: 'reason' }, a.reason)));
       }
       sheet.append(h('button', { class: 'act dim', onclick: close }, 'TUTUP'));
-    } else if (o.kind === 'npc') {
+    } else if (o.kind === 'npcinfo') {
       const npc = npcById(o.id), st = npcState(this.profile, o.id), lv = levelOf(st.aff);
       sheet.append(h('h2', {}, npc.name),
         h('p', { style: 'color:var(--muted);font-size:13px;margin:4px 0 10px' }, `${npc.role} · ${LEVEL_NAMES[lv]}${lv < AFF_STEPS.length - 1 ? ` (${st.aff}/${AFF_STEPS[lv + 1]})` : ''}`),
         h('div', { class: 'rankbar' }, h('i', { style: `width:${Math.round(levelProgress(st.aff) * 100)}%` })),
-        h('div', { class: 'npc-line' }, `“${o.line || npc.lines[lv][0]}”`),
-        h('button', { class: 'jackin' + (canTalk(this.profile, o.id) ? '' : ' off'), onclick: () => this.doTalk(o.id) },
-          canTalk(this.profile, o.id) ? '▸ NGOBROL · ⚡2' : 'Sudah ngobrol hari ini'),
-        h('button', { class: 'act' + (canGift(this.profile, o.id) ? '' : ' dim'), onclick: () => {
-          if (!canGift(this.profile, o.id)) return this.toast('Sudah memberi hadiah hari ini.');
-          this.overlay = { kind: 'gift', id: o.id }; this.render(); } }, canGift(this.profile, o.id) ? 'BERI HADIAH' : 'Sudah memberi hadiah hari ini'),
+        h('p', { style: 'color:var(--muted);font-size:12px;margin:10px 0 0' }, `Favoritnya: ${ITEMS[npc.likes].name}`),
         h('div', { class: 'section-h', style: 'margin-top:14px' }, 'Keuntungan'),
         ...npc.perks.map((t, i) => h('div', { class: 'perk' + (lv > i ? ' on' : '') }, h('b', {}, LEVEL_NAMES[i + 1]), h('span', {}, t))),
         h('button', { class: 'act dim', onclick: close }, 'TUTUP'));
-    } else if (o.kind === 'gift') {
-      const npc = npcById(o.id);
-      sheet.append(h('h2', {}, `Hadiah untuk ${npc.name}`),
-        h('p', { style: 'color:var(--muted);font-size:12px;margin:4px 0 10px' }, `Favoritnya: ${ITEMS[npc.likes].name}`));
-      const have = Object.keys(ITEMS).filter((id) => countOf(this.profile, id) > 0);
-      if (!have.length) sheet.append(h('div', { class: 'empty' }, 'Tasmu kosong. Selesaikan misi atau kerjakan kontrak untuk dapat barang.'));
-      for (const id of have)
-        sheet.append(h('button', { class: 'opt', onclick: () => this.doGift(o.id, id) },
-          `${ITEMS[id].name} ×${countOf(this.profile, id)}`, id === npc.likes && h('small', {}, '♥ favorit')));
-      sheet.append(h('button', { class: 'act dim', onclick: () => { this.overlay = { kind: 'npc', id: o.id }; this.render(); } }, 'KEMBALI'));
     } else if (o.kind === 'safehouse') {
       const ev = perksFor(this.profile).event;
       sheet.append(h('h2', {}, 'Safehouse'),
@@ -949,17 +1162,6 @@ export class App {
       sheet.append(h('h2', {}, o.title), h('p', { style: 'color:var(--muted);font-size:13px;margin:6px 0 12px' }, o.text),
         h('button', { class: 'act danger', onclick: () => { this.overlay = null; o.onOk(); } }, o.okLabel),
         h('button', { class: 'act dim', onclick: close }, 'BATAL'));
-    } else if (o.kind === 'mission') {
-      const n = nodeFor(o.id);
-      sheet.append(
-        h('div', { class: 'code', style: 'color:var(--green);font-size:12px;font-family:var(--mono)' }, n.site.code, ' · ', n.district, ' · ', DIFF_LABEL[n.difficulty]),
-        h('h2', {}, n.site.title),
-        h('p', { style: 'color:var(--muted);font-size:13px;margin:6px 0 2px' }, n.site.client),
-        h('p', { style: 'color:var(--ink);font-size:13px;margin:8px 0' }, n.site.brief),
-        h('div', { style: 'display:flex;align-items:center;gap:10px;margin:8px 0' },
-          h('span', { style: 'color:var(--amber);font-weight:600;margin-left:auto' }, `+${n.site.reward} ◆ · +${n.repReward} rep`)),
-        h('button', { class: 'jackin', onclick: () => this.acceptMission(n.id) }, '▸ TERIMA MISI'),
-        h('button', { class: 'act dim', onclick: close }, 'NANTI'));
     } else if (o.kind === 'catalog') {
       if (!o.group) {
         sheet.append(h('h2', {}, 'Command'));

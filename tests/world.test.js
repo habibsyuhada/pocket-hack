@@ -21,8 +21,9 @@ describe('world gating', () => {
   it('first site open, higher sites locked until rep/intel', () => {
     const p = newProfile();
     expect(nodeState(p, 's00')).toBe('open');
+    expect(nodeState(p, 's04')).toBe('locked'); // Laras wants friendship level 1 first
     expect(nodeState(p, 's03')).toBe('locked');
-    p.rep = 160;
+    p.rep = 120;
     expect(nodeState(p, 's03')).toBe('open');
   });
 
