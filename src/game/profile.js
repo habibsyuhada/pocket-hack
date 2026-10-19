@@ -1,4 +1,5 @@
 import { dayIndex } from './time.js';
+import { t, tr } from '../i18n/index.js';
 // Persistent player profile for the open-world game. Saved across sessions.
 export const TOOLS = {
   keyloom: { id: 'keyloom', name: 'KeyLoom', ram: 2, cmd: 'CRACK', desc: 'Menyusun kandidat kata sandi dari petunjuk yang kamu kumpulkan.' },
@@ -58,13 +59,13 @@ export function toggleTool(profile, id) {
   if (!profile.tools[id]) return { ok: false, msg: 'Tool belum dimiliki. Beli di Pasar Gelap (peta, Selatan).' };
   if (profile.active.includes(id)) {
     profile.active = profile.active.filter((t) => t !== id);
-    return { ok: true, msg: `${TOOLS[id].name} ditutup.` };
+    return { ok: true, msg: t('{1} ditutup.', TOOLS[id].name) };
   }
   if (ramUsed(profile) + TOOLS[id].ram > profile.ram) {
-    return { ok: false, msg: `RAM tidak cukup (${ramUsed(profile)}/${profile.ram}). Tutup tool lain dulu.` };
+    return { ok: false, msg: t('RAM tidak cukup ({1}/{2}). Tutup tool lain dulu.', ramUsed(profile), profile.ram) };
   }
   profile.active.push(id);
-  return { ok: true, msg: `${TOOLS[id].name} aktif.` };
+  return { ok: true, msg: t('{1} aktif.', TOOLS[id].name) };
 }
 
 export const toolActive = (profile, id) => profile.active.includes(id);

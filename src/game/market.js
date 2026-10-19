@@ -3,6 +3,7 @@ import { siteById } from '../sites/index.js';
 import { WORLD_NODES } from './world.js';
 import { perksFor } from './perks.js';
 import { addItem, KOPI_PRICE } from './items.js';
+import { t, tr } from '../i18n/index.js';
 
 // Black-market catalog. Effects are applied to the persistent profile.
 const RAW = [
@@ -14,11 +15,11 @@ const RAW = [
     desc: 'Buka lokasi "Brankas Dingin" di peta lebih awal.' },
   // Loading-speed upgrades: every command waits behind a loading screen
   { id: 'speed_1', section: 'Upgrade', name: 'Overclock I', cost: 70, kind: 'speed', level: 1,
-    desc: `Loading perintah ${LOAD_MS[0] / 1000}s → ${LOAD_MS[1] / 1000}s.` },
+    desc: t('Loading perintah {1}s → {2}s.', LOAD_MS[0] / 1000, LOAD_MS[1] / 1000) },
   { id: 'speed_2', name: 'Overclock II', cost: 150, kind: 'speed', level: 2, needs: 'speed_1',
-    desc: `Loading perintah ${LOAD_MS[1] / 1000}s → ${LOAD_MS[2] / 1000}s.` },
+    desc: t('Loading perintah {1}s → {2}s.', LOAD_MS[1] / 1000, LOAD_MS[2] / 1000) },
   { id: 'speed_3', name: 'Overclock III', cost: 280, kind: 'speed', level: 3, needs: 'speed_2',
-    desc: `Loading perintah ${LOAD_MS[2] / 1000}s → ${LOAD_MS[3] / 1000}s.` },
+    desc: t('Loading perintah {1}s → {2}s.', LOAD_MS[2] / 1000, LOAD_MS[3] / 1000) },
   // Command unlocks (extra capabilities beyond the first 4 sites)
   { id: 'cmd_search', section: 'Tool & Command', name: 'Command: SEARCH', cost: 70, kind: 'cmd', cmd: 'SEARCH',
     desc: 'Cari kata kunci di seluruh file sebuah node.' },
@@ -64,7 +65,7 @@ export function canBuy(profile, item) {
   if (owned(profile, item)) return { ok: false, reason: 'Sudah dimiliki.' };
   if (item.needs && !profile.bought.includes(item.needs)) {
     const dep = MARKET.find((m) => m.id === item.needs);
-    return { ok: false, reason: `Butuh "${dep?.name}" dulu.` };
+    return { ok: false, reason: t('Butuh "{1}" dulu.', dep?.name) };
   }
   if (profile.credits < priceFor(profile, item)) return { ok: false, reason: 'Kredit tidak cukup.' };
   return { ok: true };
@@ -82,5 +83,5 @@ export function buy(profile, itemId) {
   else if (item.kind === 'speed') profile.speed = item.level;
   else if (item.kind === 'intel') profile.intel[item.site] = true;
   else if (item.kind === 'cmd') { profile.cmds = profile.cmds || []; for (const c of item.cmds || [item.cmd]) if (!profile.cmds.includes(c)) profile.cmds.push(c); }
-  return { ok: true, msg: `Dibeli: ${item.name}.` };
+  return { ok: true, msg: t('Dibeli: {1}.', item.name) };
 }

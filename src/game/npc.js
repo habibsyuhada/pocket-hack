@@ -3,6 +3,7 @@
 // lives in game/dialogues.js and the UI in ui/app.js.
 import { addItem, removeItem, countOf } from './items.js';
 import { NPC_CELLS, cellXY } from '../city/layout.js';
+import { t, tr } from '../i18n/index.js';
 
 // affinity needed for levels 0..4
 export const AFF_STEPS = [0, 10, 25, 45, 70];
@@ -69,7 +70,7 @@ function claimLevelRewards(profile, npc, out) {
     out.push(`${npc.name}: ${LEVEL_NAMES[st.claimed]} — ${npc.perks[st.claimed - 1]}`);
     if (npc.id === 'rani' && st.claimed === 2) {
       const next = NPCS.filter((n) => !isVisible(profile, n)).sort((a, b) => a.unlockRep - b.unlockRep)[0];
-      if (next) { (profile.intel ||= {})[next.site] = true; out.push(`Rani membocorkan sebuah kontak: ${next.name}, ${next.role}.`); }
+      if (next) { (profile.intel ||= {})[next.site] = true; out.push(t('Rani membocorkan sebuah kontak: {1}, {2}.', next.name, next.role)); }
     }
     if (npc.id === 'gun' && st.claimed === 2) {
       profile.cmds = profile.cmds || [];

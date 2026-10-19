@@ -1,4 +1,6 @@
 import './style.css';
+import { LANG } from './i18n/index.js';
+document.documentElement.lang = LANG;
 import { App } from './ui/app.js';
 
 const root = document.getElementById('app');

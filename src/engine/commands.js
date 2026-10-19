@@ -4,6 +4,7 @@
 // four sites are all in DEFAULT_CMDS so they're never locked.
 import { atLeast, device, visibleFiles } from './core.js';
 import { getActions } from './actions.js';
+import { t, tr } from '../i18n/index.js';
 
 export const CMD_META = {
   // Eksplorasi
@@ -93,7 +94,7 @@ export function commandTargets(ctx, cmd) {
   } else if (meta.kind === 'file') {
     if (cur) {
       for (const f of visibleFiles(run, cur)) { const r = row({ type: 'file', device: cur, id: f.id }, f.name); if (r) out.push(r); }
-      for (const f of run.local) { const r = row({ type: 'file', local: true, id: f.id }, `${f.name} (lokal)`); if (r) out.push(r); }
+      for (const f of run.local) { const r = row({ type: 'file', local: true, id: f.id }, t('{1} (lokal)', f.name)); if (r) out.push(r); }
     }
   } else if (meta.kind === 'proc') {
     if (cur) for (const p of device(run, cur).procs || []) { const r = row({ type: 'proc', device: cur, id: p.id }, p.name); if (r) out.push(r); }

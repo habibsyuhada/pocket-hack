@@ -1,3 +1,4 @@
+import { t, tr } from '../i18n/index.js';
 // Pure game logic: no DOM. Everything here is a fictional simulation.
 // Profile/tool helpers live in ../game/profile.js; re-exported for convenience.
 export { TOOLS, newProfile, ramUsed, toggleTool, toolActive } from '../game/profile.js';
@@ -29,7 +30,7 @@ export function newRun(mission) {
     creds: [],
     flags: [],
     read: [],
-    log: [{ t: 'sys', text: mission.intro || `Kontrak "${mission.title}" diterima. Terminal siap.` }],
+    log: [{ t: 'sys', text: tr(mission.intro) || t('Kontrak "{1}" diterima. Terminal siap.', mission.title) }],
     ended: null
   };
 }
@@ -54,13 +55,13 @@ export function applyEffects(run, mission, fx, out) {
   for (const c of fx.clues || []) {
     if (!run.clues.includes(c)) {
       run.clues.push(c);
-      out.push({ t: 'clue', text: `+ Petunjuk: ${mission.clues[c]?.title || c}` });
+      out.push({ t: 'clue', text: t('+ Petunjuk: {1}', mission.clues[c]?.title || c) });
     }
   }
   for (const c of fx.creds || []) {
     if (!run.creds.includes(c)) {
       run.creds.push(c);
-      out.push({ t: 'clue', text: `+ Kredensial: ${mission.creds[c]?.label || c}` });
+      out.push({ t: 'clue', text: t('+ Kredensial: {1}', mission.creds[c]?.label || c) });
     }
   }
   add(run.flags, fx.flags);
@@ -68,11 +69,11 @@ export function applyEffects(run, mission, fx, out) {
     const d = device(run, id);
     if (d && !d.discovered) {
       d.discovered = true;
-      out.push({ t: 'ok', text: `Perangkat ditemukan: ${d.name} [${d.addr}]` });
+      out.push({ t: 'ok', text: t('Perangkat ditemukan: {1} [{2}]', d.name, d.addr) });
     }
   }
   for (const id of fx.online || []) device(run, id).online = true;
-  if (fx.log) out.push({ t: 'out', text: fx.log });
+  if (fx.log) out.push({ t: 'out', text: tr(fx.log) });
 }
 
 // A device is reachable when it is an entry point or linked from any device

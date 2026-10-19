@@ -1,3 +1,4 @@
+import { t, tr, isEnglish } from '../i18n/index.js';
 // Day / Fokus (energy) model. Pure logic, no DOM.
 // Santai: nothing here ever blocks the player — low Fokus only makes actions
 // slower and pricier. Sleeping at the Safehouse starts the next day.
@@ -59,8 +60,11 @@ export function restoreFocus(profile, amount, max = FOCUS_BASE) {
 // 1970-01-01 (local date). Weekly events, NPC routes, daily contracts and
 // seasons all follow the actual date and weekday.
 export const DAY_MS = 86400000;
-const DAY_NAMES = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
-const MONTH_NAMES = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+const DAY_NAMES = { id: ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'], en: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] };
+const MONTH_NAMES = { id: ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'],
+  en: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'] };
+const dayNames = () => DAY_NAMES[isEnglish() ? 'en' : 'id'];
+const monthNames = () => MONTH_NAMES[isEnglish() ? 'en' : 'id'];
 // Indonesian climate by month
 const SEASON_BY_MONTH = ['Penghujan', 'Penghujan', 'Pancaroba', 'Pancaroba', 'Kemarau', 'Kemarau', 'Kemarau', 'Kemarau', 'Kemarau', 'Pancaroba', 'Penghujan', 'Penghujan'];
 
@@ -71,8 +75,14 @@ export function dayIndex(now = Date.now()) {
 // the UTC fields of this date hold the local calendar date
 const dayDate = (day) => new Date(day * DAY_MS);
 export const weekdayOf = (day) => dayDate(day).getUTCDay();            // 0 = Minggu
-export const fmtDate = (day) => { const d = dayDate(day); return `${DAY_NAMES[d.getUTCDay()]}, ${d.getUTCDate()} ${MONTH_NAMES[d.getUTCMonth()]}`; };
-export const fmtDateShort = (day) => { const d = dayDate(day); return `${DAY_NAMES[d.getUTCDay()].slice(0, 3)} ${d.getUTCDate()} ${MONTH_NAMES[d.getUTCMonth()].slice(0, 3)}`; };
+export const fmtDate = (day) => {
+  const d = dayDate(day), w = dayNames()[d.getUTCDay()], m = monthNames()[d.getUTCMonth()];
+  return isEnglish() ? `${w}, ${m} ${d.getUTCDate()}` : `${w}, ${d.getUTCDate()} ${m}`;
+};
+export const fmtDateShort = (day) => {
+  const d = dayDate(day), w = dayNames()[d.getUTCDay()].slice(0, 3), m = monthNames()[d.getUTCMonth()].slice(0, 3);
+  return isEnglish() ? `${w} ${m} ${d.getUTCDate()}` : `${w} ${d.getUTCDate()} ${m}`;
+};
 export const seasonName = (day) => SEASON_BY_MONTH[dayDate(day).getUTCMonth()];
 
 // Moves the profile to today's date. Returns true when the day rolled over.
@@ -119,13 +129,13 @@ export function sleepPlan(profile, focusMax = FOCUS_BASE) {
 // "1 jam 20 mnt" / "45 mnt"
 export function fmtGameTime(min) {
   const h = Math.floor(min / 60), m = Math.round(min % 60);
-  return h ? (m ? `${h} jam ${m} mnt` : `${h} jam`) : `${m} mnt`;
+  return h ? (m ? t('{1} jam {2} mnt', h, m) : t('{1} jam', h)) : t('{1} mnt', m);
 }
 
 // clock for a countdown: 4825000 ms -> "1:20:25", 95000 -> "1:35"
 export function fmtClock(ms) {
-  const t = Math.max(0, Math.ceil(ms / 1000));
-  const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), sec = t % 60;
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  const h = Math.floor(total / 3600), m = Math.floor((total % 3600) / 60), sec = total % 60;
   const two = (n) => String(n).padStart(2, '0');
   return h ? `${h}:${two(m)}:${two(sec)}` : `${m}:${two(sec)}`;
 }

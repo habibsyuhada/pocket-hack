@@ -41,8 +41,8 @@ berikutnya dan keuntungan (diskon, hint murah, Fokus, dll).
 
 ## Navigasi
 
-Bottom bar: **Peta · Terminal · Goals · Profil**. **Pasar Gelap** adalah node di peta
-(distrik Selatan), bukan tab. Terminal punya
+Bottom bar: **Peta · Terminal · Goals · Profil**. **Pasar Gelap** (Selatan) dan **Biro Kontrak**
+adalah node di peta, bukan tab. Profil adalah menu: Inventory, Kontak, Tool & Command, Arsip, Pengaturan. Terminal punya
 tombol **CMDS** (grup Eksplorasi, Akses, Server, Automation). Command
 **Server** (`FILES`, `SERVICES`, `CONTROL`) membuka halaman File / Service /
 Control node yang terhubung; `READ`, `DOWNLOAD`, `DECRYPT`, `STOP`, `START`,
@@ -56,6 +56,19 @@ untuk lanjut, dan pilihan yang menambah kedekatan. Teks ada di
 siluet placeholder. Untuk memasangnya: taruh PNG transparan (pose berdiri,
 sekitar 800×1400) di `public/portraits/` lalu isi nama file di
 `src/ui/portraits.js` (mood: `normal`, `happy`, `worried`, `serious`).
+
+## Bahasa (Indonesia / English)
+
+Pengaturan → Bahasa (Profil → Pengaturan). Mengganti bahasa memuat ulang game,
+progres tetap. Teks game ditulis dalam bahasa Indonesia dan diterjemahkan saat
+**ditampilkan** lewat kamus `src/i18n/en.js` (kunci = teks Indonesia persis;
+`{1}`, `{2}` = argumen). Teks bertemplate memakai `t('Fokus +{1}.', n)`.
+Tanggal, hari, dan satuan waktu mengikuti bahasa.
+
+Menambah teks baru: tulis dalam bahasa Indonesia, lalu tambahkan terjemahannya di
+`src/i18n/en.js` (atau daftarkan di `src/i18n/same.js` kalau sama di semua
+bahasa). `tests/i18n.test.js` gagal kalau ada teks yang terlewat.
+`node tools/i18n-extract.mjs` mencetak semua teks yang perlu diterjemahkan.
 
 ## Target
 

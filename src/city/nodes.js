@@ -6,7 +6,7 @@ const hub = (id, name, addr, district, inspect, extra = {}) => ({
   id, name, kind: 'Router', addr, online: true, open: 'guest', hub: true, district, inspect,
   files: [
     { id: `${id}_info`, name: 'info_hotspot.txt', minAccess: 'guest',
-      content: `HOTSPOT ${name.toUpperCase()}\n\nJaringan tamu terbuka untuk warga.\nPerangkat di sekitar terlihat setelah SCAN.\n(Semua sistem di game ini fiktif.)` }
+      content: `${name.toUpperCase()}\n\nJaringan tamu terbuka untuk warga.\nPerangkat di sekitar terlihat setelah SCAN.\n(Semua sistem di game ini fiktif.)` }
   ],
   ...extra
 });

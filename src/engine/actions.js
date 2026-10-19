@@ -1,3 +1,4 @@
+import { t, tr } from '../i18n/index.js';
 import {
   LEVEL_LABEL, TOOLS, atLeast, applyEffects, configValid, device, findFile,
   fileVisible, lockingProc, reachable, visibleFiles
@@ -14,7 +15,7 @@ const A = (cmd, enabled, reason = '', choose = false) => ({ cmd, enabled, reason
 export const LOCAL_CAP = 6;
 
 function needTool(profile, id) {
-  return profile.tools[id] ? '' : `Butuh tool ${TOOLS[id].name}. Beli di Pasar Gelap (peta, Selatan).`;
+  return profile.tools[id] ? '' : t('Butuh tool {1}. Beli di Pasar Gelap (peta, Selatan).', TOOLS[id].name);
 }
 
 export function getActions(ctx, target) {
@@ -49,7 +50,7 @@ export function getActions(ctx, target) {
         out.push(A('EXPLOIT', true));
       }
       if (d.elevate && d.access !== d.elevate.to) {
-        const why = !atLeast(d.access, d.elevate.from) ? `Butuh akses ${LEVEL_LABEL[d.elevate.from]} dulu.` : '';
+        const why = !atLeast(d.access, d.elevate.from) ? t('Butuh akses {1} dulu.', LEVEL_LABEL[d.elevate.from]) : '';
         out.push(A('ELEVATE', !why, why));
       }
     }
@@ -71,15 +72,15 @@ export function getActions(ctx, target) {
     let readWhy = '';
     if (f.deleted) readWhy = 'File terhapus. Pulihkan dengan RECOVER.';
     else if (f.corrupt) readWhy = 'File rusak. Pulihkan dengan RECOVER.';
-    else if (lock) readWhy = `Dikunci proses ${lock.name}.`;
+    else if (lock) readWhy = t('Dikunci proses {1}.', lock.name);
     else if (f.encrypted) readWhy = 'Terenkripsi. DOWNLOAD lalu DECRYPT di perangkatmu.';
     out.push(A('READ', !readWhy, readWhy));
     if (!f.noDownload) {
       let dlWhy = '';
       if (f.deleted || f.corrupt) dlWhy = 'Pulihkan dulu.';
-      else if (lock) dlWhy = `Dikunci proses ${lock.name}.`;
+      else if (lock) dlWhy = t('Dikunci proses {1}.', lock.name);
       else if (run.local.some((l) => l.id === f.id)) dlWhy = 'Sudah ada salinan lokal.';
-      else if (run.local.length >= LOCAL_CAP) dlWhy = `Penyimpanan lokal penuh (${LOCAL_CAP}/${LOCAL_CAP}). Hapus salinan dulu.`;
+      else if (run.local.length >= LOCAL_CAP) dlWhy = t('Penyimpanan lokal penuh ({1}/{2}). Hapus salinan dulu.', LOCAL_CAP, LOCAL_CAP);
       out.push(A('DOWNLOAD', !dlWhy, dlWhy));
     }
     if (f.deleted || f.corrupt) out.push(A('RECOVER', !needTool(profile, 'mender'), needTool(profile, 'mender')));
@@ -91,7 +92,7 @@ export function getActions(ctx, target) {
     const d = device(run, target.device);
     const p = d.procs.find((x) => x.id === target.id);
     const ctrl = atLeast(d.access, p.control || 'admin');
-    const why = ctrl ? '' : `Butuh akses ${LEVEL_LABEL[p.control || 'admin']}.`;
+    const why = ctrl ? '' : t('Butuh akses {1}.', LEVEL_LABEL[p.control || 'admin']);
     if (p.running) out.push(A('STOP', ctrl && p.stoppable !== false, why || 'Proses inti, tidak boleh dihentikan.'));
     else out.push(A('START', ctrl, why));
     if (p.config) {
@@ -105,7 +106,7 @@ export function getActions(ctx, target) {
     const d = device(run, target.device);
     const c = d.controls.find((x) => x.id === target.id);
     const ok = atLeast(d.access, c.minAccess || 'admin');
-    out.push(A('CONTROL', ok, `Butuh akses ${LEVEL_LABEL[c.minAccess || 'admin']}.`, true));
+    out.push(A('CONTROL', ok, t('Butuh akses {1}.', LEVEL_LABEL[c.minAccess || 'admin']), true));
   }
   return out;
 }
@@ -138,7 +139,7 @@ export function getChoices(ctx, cmd, target) {
     const seen = new Set([f.id]);
     return pool
       .filter((p) => p.f.compare === f.compare && !seen.has(p.f.id) && seen.add(p.f.id))
-      .map((p) => ({ value: p.f.id, label: `${p.f.name}  (${p.where})` }));
+      .map((p) => ({ value: p.f.id, label: `${p.f.name}  (${tr(p.where)})` }));
   }
   if (cmd === 'CONFIG') {
     const p = device(run, target.device).procs.find((x) => x.id === target.id);
@@ -167,7 +168,7 @@ export function exec(ctx, cmd, target, arg) {
   let sheet = null;
   const d = target.device ? device(run, target.device) : target.type === 'device' ? device(run, target.id) : null;
   const label = target.type === 'device' ? d.name : target.type === 'rig' ? '' : (findFile(run, target)?.name || target.id);
-  out.push({ t: 'cmd', text: `${cmd.toLowerCase()} ${label}`.trim() });
+  out.push({ t: 'cmd', text: `${cmd.toLowerCase()} ${tr(label)}`.trim() });
 
   switch (cmd) {
     case 'SCAN': {
@@ -177,7 +178,7 @@ export function exec(ctx, cmd, target, arg) {
       if (!found.length) out.push({ t: 'out', text: 'Tidak ada perangkat lain yang terlihat dari sini.' });
       for (const x of found) {
         if (!x.discovered) x.discovered = true;
-        out.push({ t: 'out', text: `${x.addr.padEnd(13)} ${x.name}  ${x.online ? '' : '[OFFLINE]'}`.trimEnd() });
+        out.push({ t: 'out', text: `${x.addr.padEnd(13)} ${tr(x.name)}  ${x.online ? '' : '[OFFLINE]'}`.trimEnd() });
       }
       if (from) applyEffects(run, mission, from.onScan, out);
       break;
@@ -189,54 +190,54 @@ export function exec(ctx, cmd, target, arg) {
     case 'SEARCH': {
       const files = d ? visibleFiles(run, d.id) : [];
       if (!files.length) { out.push({ t: 'out', text: 'Tidak ada file untuk dipindai.' }); break; }
-      out.push({ t: 'out', text: `Memindai ${files.length} file di ${d.name}:` });
+      out.push({ t: 'out', text: t('Memindai {1} file di {2}:', files.length, d.name) });
       for (const f of files) {
-        const first = String(f.content || '').split('\n').find((l) => l.trim()) || '(kosong)';
+        const first = tr(String(f.content || '')).split('\n').find((l) => l.trim()) || t('(kosong)');
         out.push({ t: 'out', text: `  ${f.name} — ${first.slice(0, 40)}` });
       }
       break;
     }
     case 'INSPECT':
       sheet = { type: 'read', title: d.name, content: d.inspect };
-      out.push({ t: 'out', text: `${d.kind} · akses kamu: ${LEVEL_LABEL[d.access]}` });
+      out.push({ t: 'out', text: t('{1} · akses kamu: {2}', d.kind, LEVEL_LABEL[d.access]) });
       applyEffects(run, mission, d.onInspect, out);
       break;
     case 'CONNECT': {
       run.current = d.id;
       if (d.open && !atLeast(d.access, d.open)) d.access = d.open;
-      out.push({ t: 'ok', text: `Terhubung ke ${d.name}. Akses: ${LEVEL_LABEL[d.access]}.` });
+      out.push({ t: 'ok', text: t('Terhubung ke {1}. Akses: {2}.', d.name, LEVEL_LABEL[d.access]) });
       applyEffects(run, mission, d.onConnect, out);
       break;
     }
     case 'LOGIN': {
       const c = mission.creds[arg];
       if (!atLeast(d.access, c.level)) d.access = c.level;
-      out.push({ t: 'ok', text: `Login sebagai ${c.account}. Akses: ${LEVEL_LABEL[d.access]}.` });
+      out.push({ t: 'ok', text: t('Login sebagai {1}. Akses: {2}.', c.account, LEVEL_LABEL[d.access]) });
       break;
     }
     case 'CRACK': {
       if (arg === d.crack.answer) {
         d.access = d.crack.level;
-        out.push({ t: 'ok', text: `Kandidat "${arg}" cocok. Akses: ${LEVEL_LABEL[d.access]}.` });
+        out.push({ t: 'ok', text: t('Kandidat "{1}" cocok. Akses: {2}.', arg, LEVEL_LABEL[d.access]) });
         applyEffects(run, mission, d.crack.onSuccess, out);
       } else {
-        out.push({ t: 'warn', text: `Kandidat "${arg}" ditolak. Cari petunjuk lain lalu coba lagi.` });
+        out.push({ t: 'warn', text: t('Kandidat "{1}" ditolak. Cari petunjuk lain lalu coba lagi.', arg) });
       }
       break;
     }
     case 'EXPLOIT':
       d.access = d.exploit.level;
-      out.push({ t: 'ok', text: d.exploit.text });
-      out.push({ t: 'ok', text: `Akses: ${LEVEL_LABEL[d.access]}.` });
+      out.push({ t: 'ok', text: tr(d.exploit.text) });
+      out.push({ t: 'ok', text: t('Akses: {1}.', LEVEL_LABEL[d.access]) });
       break;
     case 'ELEVATE': {
       const need = d.elevate.requires || [];
       if (need.every((f) => run.flags.includes(f))) {
         d.access = d.elevate.to;
-        out.push({ t: 'ok', text: d.elevate.text });
-        out.push({ t: 'ok', text: `Akses: ${LEVEL_LABEL[d.access]}.` });
+        out.push({ t: 'ok', text: tr(d.elevate.text) });
+        out.push({ t: 'ok', text: t('Akses: {1}.', LEVEL_LABEL[d.access]) });
       } else {
-        out.push({ t: 'warn', text: d.elevate.failText });
+        out.push({ t: 'warn', text: tr(d.elevate.failText) });
       }
       break;
     }
@@ -247,15 +248,15 @@ export function exec(ctx, cmd, target, arg) {
     }
     case 'DOWNLOAD': {
       const f = findFile(run, target);
-      if (run.local.length >= LOCAL_CAP) { out.push({ t: 'warn', text: `Penyimpanan lokal penuh (${LOCAL_CAP}/${LOCAL_CAP}). Hapus salinan dulu.` }); break; }
+      if (run.local.length >= LOCAL_CAP) { out.push({ t: 'warn', text: t('Penyimpanan lokal penuh ({1}/{2}). Hapus salinan dulu.', LOCAL_CAP, LOCAL_CAP) }); break; }
       run.local.push({ ...structuredClone(f), from: d.name });
-      out.push({ t: 'ok', text: `${f.name} disalin ke perangkatmu (${run.local.length}/${LOCAL_CAP}).` });
+      out.push({ t: 'ok', text: t('{1} disalin ke perangkatmu ({2}/{3}).', f.name, run.local.length, LOCAL_CAP) });
       applyEffects(run, mission, f.onDownload, out);
       break;
     }
     case 'DELETE': {
       run.local = run.local.filter((l) => l.id !== target.id);
-      out.push({ t: 'out', text: `Salinan lokal dihapus (${run.local.length}/${LOCAL_CAP}).` });
+      out.push({ t: 'out', text: t('Salinan lokal dihapus ({1}/{2}).', run.local.length, LOCAL_CAP) });
       break;
     }
     case 'RECOVER': {
@@ -263,7 +264,7 @@ export function exec(ctx, cmd, target, arg) {
       f.deleted = false;
       f.corrupt = false;
       if (f.recoverTo) Object.assign(f, f.recoverTo);
-      out.push({ t: 'ok', text: `${f.name} berhasil dipulihkan.` });
+      out.push({ t: 'ok', text: t('{1} berhasil dipulihkan.', f.name) });
       break;
     }
     case 'DECRYPT': {
@@ -271,10 +272,10 @@ export function exec(ctx, cmd, target, arg) {
       const enc = f.encrypted;
       if (arg === enc.key) {
         Object.assign(f, enc.result, { encrypted: null });
-        out.push({ t: 'ok', text: `Kunci cocok. ${f.name} terbuka.` });
+        out.push({ t: 'ok', text: t('Kunci cocok. {1} terbuka.', f.name) });
         applyEffects(run, mission, enc.onOpen, out);
       } else {
-        out.push({ t: 'warn', text: `Kunci "${arg}" salah. Isi file tetap aman, coba simpulkan ulang.` });
+        out.push({ t: 'warn', text: t('Kunci "{1}" salah. Isi file tetap aman, coba simpulkan ulang.', arg) });
       }
       break;
     }
@@ -293,18 +294,18 @@ export function exec(ctx, cmd, target, arg) {
     case 'STOP': {
       const p = d.procs.find((x) => x.id === target.id);
       p.running = false;
-      out.push({ t: 'ok', text: `${p.name} dihentikan.` });
+      out.push({ t: 'ok', text: t('{1} dihentikan.', p.name) });
       applyEffects(run, mission, p.onStop, out);
       break;
     }
     case 'START': {
       const p = d.procs.find((x) => x.id === target.id);
       if (p.config && !configValid(p)) {
-        out.push({ t: 'err', text: p.failText || `${p.name} gagal menyala. Periksa konfigurasi.` });
+        out.push({ t: 'err', text: tr(p.failText) || t('{1} gagal menyala. Periksa konfigurasi.', p.name) });
         break;
       }
       p.running = true;
-      out.push({ t: 'ok', text: `${p.name} berjalan.` });
+      out.push({ t: 'ok', text: t('{1} berjalan.', p.name) });
       applyEffects(run, mission, p.onStart, out);
       break;
     }
@@ -312,19 +313,19 @@ export function exec(ctx, cmd, target, arg) {
       const p = d.procs.find((x) => x.id === target.id);
       const [key, value] = arg;
       p.config[key].value = value;
-      out.push({ t: 'out', text: `${p.config[key].label} = ${value}` });
+      out.push({ t: 'out', text: `${tr(p.config[key].label)} = ${value}` });
       break;
     }
     case 'RESTORE': {
       const p = d.procs.find((x) => x.id === target.id);
       p.config = structuredClone(p.snapshot);
-      out.push({ t: 'out', text: `Konfigurasi ${p.name} dikembalikan ke versi tersimpan.` });
+      out.push({ t: 'out', text: t('Konfigurasi {1} dikembalikan ke versi tersimpan.', p.name) });
       break;
     }
     case 'CONTROL': {
       const c = d.controls.find((x) => x.id === target.id);
       c.state = arg;
-      out.push({ t: 'ok', text: `${c.label}: ${arg}` });
+      out.push({ t: 'ok', text: `${tr(c.label)}: ${tr(arg)}` });
       applyEffects(run, mission, c.on?.[arg], out);
       break;
     }
