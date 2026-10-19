@@ -28,6 +28,8 @@ export const PLACE = {
 export const SAFEHOUSE_CELL = [3, 10];
 // The black market is a place on the map (Pasar Selatan), not a menu tab.
 export const MARKET_CELL = [5, 13];
+// Where contracts (daily maintenance jobs) are taken and checked.
+export const CONTRACT_CELL = [5, 10];
 
 // Each NPC walks a 3-cell route, one cell per day. Cells are free of nodes.
 export const NPC_CELLS = {

@@ -556,3 +556,17 @@ button:active:not(:disabled):not(.node):not(.site-pin) { transform: scale(0.97);
 .loading.sleeping { z-index: 120; background: rgba(2,4,3,0.97); }
 
 .node.token.shop .tk-st { color: #ff8f5a; }
+
+/* profile hub + settings */
+.menu-list { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+.menu-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg-panel); text-align: left; }
+.menu-row .ic { width: 38px; height: 38px; flex: none; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 10px; color: var(--green); }
+.menu-row .main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.menu-row .main b { font-size: 14px; color: var(--ink); }
+.menu-row .main small { font-size: 11px; color: var(--muted); }
+.menu-row .chev { color: var(--muted); font-size: 22px; }
+.menu-row:active { background: var(--green-ghost); border-color: var(--green-dim); }
+.setting-note { color: var(--muted); font-size: 12px; line-height: 1.5; margin: 0 0 12px; }
+.lang-row { display: flex; gap: 10px; margin-bottom: 18px; }
+.lang-btn { flex: 1; padding: 13px; border: 1px solid var(--line); border-radius: 12px; color: var(--muted); font-size: 14px; font-weight: 600; }
+.lang-btn.on { border-color: var(--green); color: var(--green); background: var(--green-ghost); box-shadow: var(--glow-sm); }

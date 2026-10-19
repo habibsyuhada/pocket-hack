@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { CITY, START_NODES } from '../src/city/index.js';
-import { PLACE, NPC_CELLS, SAFEHOUSE_CELL, MARKET_CELL, DISTRICTS, cellXY, MAPW, MAPH } from '../src/city/layout.js';
+import { PLACE, NPC_CELLS, SAFEHOUSE_CELL, MARKET_CELL, CONTRACT_CELL, DISTRICTS, cellXY, MAPW, MAPH } from '../src/city/layout.js';
 import { SITES } from '../src/sites/index.js';
 
 const devices = CITY.world.devices;
@@ -77,6 +77,7 @@ describe('map layout', () => {
     ...Object.entries(PLACE).map(([id, [c, r]]) => ({ id, ...cellXY([c, r]) })),
     { id: 'safehouse', ...cellXY(SAFEHOUSE_CELL) },
     { id: 'market', ...cellXY(MARKET_CELL) },
+    { id: 'contracts', ...cellXY(CONTRACT_CELL) },
     ...Object.entries(NPC_CELLS).flatMap(([n, cells]) => cells.map((c, i) => ({ id: `${n}${i}`, ...cellXY(c) })))
   ];
 

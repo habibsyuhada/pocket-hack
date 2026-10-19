@@ -6,12 +6,12 @@ import { hasCmd, loadMs } from '../game/profile.js';
 import { DEFAULT_CMDS } from '../engine/commands.js';
 import { CITY as CITY_INFO, WORLD_NODES, DIFF_LABEL, nodeFor, worldNodes, isAccepted, offersFrom, waitingOn } from '../game/world.js';
 import { CITY as NET, START_NODES, CITY_VERSION, DISTRICTS } from '../city/index.js';
-import { MAPW, MAPH, cellXY, SAFEHOUSE_CELL, MARKET_CELL } from '../city/layout.js';
+import { MAPW, MAPH, cellXY, SAFEHOUSE_CELL, MARKET_CELL, CONTRACT_CELL } from '../city/layout.js';
 import { greetingFor, talkSceneFor, offerSceneFor, noOfferLine, giftLines, turnInSceneFor, thanksLine } from '../game/dialogues.js';
 import { readyFrom, endingsFor, awaitingTurnIn } from '../game/turnin.js';
 import { PLACEHOLDER, portraitSrc } from './portraits.js';
 import { MARKET, buy, canBuy, owned, priceFor } from '../game/market.js';
-import { ITEMS, KOPI_FOCUS, KOPI_PRICE, MISSION_ITEMS, addItem, addAll, removeItem, countOf, contractDrop } from '../game/items.js';
+import { ITEMS, KOPI_FOCUS, MISSION_ITEMS, addItem, addAll, removeItem, countOf, contractDrop } from '../game/items.js';
 import { NPCS, LEVEL_NAMES, AFF_STEPS, npcById, npcState, npcLevel, levelOf, levelProgress, isVisible, npcSpot, canTalk, canGift, talkWait, giftWait, talk, gift, missionBond } from '../game/npc.js';
 import { eventFor, focusCostFor, restoreFocus, loadingMult, spendFocus, startSleep, sleepPlan, sleepProgress, finishSleep, wakeEarly, fmtGameTime, fmtClock, fmtDate, fmtDateShort, dayIndex, syncDay, focusState, FOCUS_LABEL, seasonName } from '../game/time.js';
 import { perksFor } from '../game/perks.js';
@@ -53,6 +53,7 @@ export class App {
     this.ctx = null;                 // { mission: city graph, run: shared run, profile }
     this.goalSite = null;            // mission shown in the Goals tab / used for hints
     this.dlg = null;                 // active dialogue scene
+    this.profileSub = null;          // null = profile menu, else bag | contacts | tools | archive | settings
     this.view = 'map';               // map | terminal | goals | profile | files | system | control
     this.sel = { type: 'rig' };
     this.selSite = null;
@@ -160,6 +161,7 @@ export class App {
     if (this.profile.sleeping) return true;
     if (this.busy) { this.cancelBusy(); return true; }
     if (this.overlay) { this.overlay = null; this.render(); return true; }
+    if (this.view === 'profile' && this.profileSub) { this.profileSub = null; this.render(); return true; }
     if (this.dlg) {
       if (['gift', 'offers', 'turnlist', 'ending'].includes(this.dlg.mode)) this.dlgHub();
       else this.dlgClose();
@@ -247,19 +249,6 @@ export class App {
     this.withLoading(cmd, () => { this.persist(); this.render(); this.toast(message); });
   }
 
-  supplyRows() {
-    const h = this.h.bind(this);
-    const kopi = countOf(this.profile, 'kopi');
-    const price = Math.max(1, Math.round(KOPI_PRICE * (1 - perksFor(this.profile).marketDiscount)));
-    return [h('div', { class: 'section-h' }, 'Warung'),
-      h('div', { class: 'job' },
-        h('b', {}, `Kopi Susu · punya ${kopi}`),
-        h('p', { style: 'color:var(--muted);font-size:12px;margin:4px 0 8px' }, `Pulihkan Fokus +${Math.round(KOPI_FOCUS * perksFor(this.profile).kopiMult)}.`),
-        h('div', { style: 'display:flex;gap:8px' },
-          h('button', { class: 'act' + (kopi ? '' : ' dim'), style: 'margin:0', onclick: () => this.useKopi() }, 'MINUM'),
-          h('button', { class: 'act', style: 'margin:0', onclick: () => this.buyKopi() }, `BELI ◆${price}`)))];
-  }
-
   useKopi() {
     const mods = perksFor(this.profile);
     if (!countOf(this.profile, 'kopi')) return this.toast('Kamu tidak punya kopi.');
@@ -272,16 +261,7 @@ export class App {
     this.toast(`Fokus +${this.profile.focus - before}. Segar lagi.`, 'hint');
   }
 
-  buyKopi() {
-    const price = Math.max(1, Math.round(KOPI_PRICE * (1 - perksFor(this.profile).marketDiscount)));
-    if (this.profile.credits < price) return this.toast('Kredit tidak cukup untuk beli kopi.');
-    this.profile.credits -= price;
-    addItem(this.profile, 'kopi', 1);
-    this.persist();
-    this.render();
-  }
-
-  // Safehouse list: offers for cleared sites + today's chore for active contracts.
+  // Biro Kontrak list: offers for cleared sites + today's chore for active contracts.
   contractRows() {
     const h = this.h.bind(this);
     const rows = [];
@@ -301,7 +281,7 @@ export class App {
                  : '✓ Beres hari ini. Lanjut lagi besok.')));
       }
     }
-    return rows.length ? [h('div', { class: 'section-h' }, 'Kontrak'), ...rows] : [];
+    return rows;
   }
 
   dueNotes() {
@@ -382,7 +362,7 @@ export class App {
     if (!startContract(this.profile, siteId)) return;
     this.persist();
     this.render();
-    this.toast(`Kontrak perawatan ${siteById(siteId).title} diambil. Buka file server node awalnya tiap hari.`, 'doc');
+    this.toast(`Kontrak perawatan ${siteById(siteId).title} diambil. Buka File Server node awalnya tiap hari.`, 'doc');
   }
 
   // Entering the file / service server runs LS / PS behind the loading screen.
@@ -969,6 +949,11 @@ export class App {
     cards.push(this.personTokenPx({ cx: shop.x, cy: shop.y, color: '#ff8f5a', icon: 'market', kind: 'shop', title: 'PASAR GELAP',
       sub: 'Selatan · tool, command, upgrade', st: 'BELANJA',
       onclick: () => { this.overlay = { kind: 'market' }; this.render(); } }));
+    const biro = cellXY(CONTRACT_CELL);
+    const waiting = WORLD_NODES.filter((m) => canContract(this.profile, m.id) || (hasContract(this.profile, m.id) && pendingDays(this.profile, m.id) > 0)).length;
+    cards.push(this.personTokenPx({ cx: biro.x, cy: biro.y, color: '#4fd1c5', icon: 'jobs', kind: 'shop', title: 'BIRO KONTRAK',
+      sub: 'perawatan harian', badge: waiting ? { t: '!', cls: 'job' } : null, st: waiting ? `${waiting} MENUNGGU` : 'KONTRAK',
+      onclick: () => { this.overlay = { kind: 'contracts' }; this.render(); } }));
     for (const npc of NPCS) {
       if (!isVisible(this.profile, npc)) continue;
       const pos = npcSpot(npc, this.profile.day), lv = levelOf(npcState(this.profile, npc.id).aff);
@@ -1105,9 +1090,11 @@ export class App {
   paneMarket() {
     const h = this.h.bind(this);
     const ev = perksFor(this.profile).event;
-    const out = [h('div', { class: 'section-h' }, `Pasar Gelap · ◆ ${this.profile.credits}`)];
+    const out = [h('h2', { style: 'margin:0 0 4px' }, `Pasar Gelap · ◆ ${this.profile.credits}`)];
     if (ev?.marketDiscount) out.push(h('div', { class: 'event-chip' }, h('b', {}, `★ ${ev.name}`), h('small', {}, ev.desc)));
+    let section = null;
     for (const item of MARKET) {
+      if (item.section && item.section !== section) { section = item.section; out.push(h('div', { class: 'section-h' }, section)); }
       const have = owned(this.profile, item);
       const c = canBuy(this.profile, item);
       out.push(h('div', { class: 'market-row' + (have ? ' owned' : '') },
@@ -1119,13 +1106,29 @@ export class App {
     return out;
   }
 
+  // Profile is a hub: a short operator card and a menu of sub-pages.
   paneProfile() {
+    const h = this.h.bind(this);
+    const sub = this.profileSub;
+    if (!sub) return this.profileMenu();
+    const pages = { bag: ['Inventory', () => this.profileBag()], contacts: ['Kontak', () => this.profileContacts()],
+      tools: ['Tool & Command', () => this.profileTools()], archive: ['Arsip', () => this.profileArchive()], settings: ['Pengaturan', () => this.profileSettings()] };
+    const [title, body] = pages[sub];
+    return [h('button', { class: 'back-row', onclick: () => { this.profileSub = null; this.render(); } }, this.ic('back'), ' Profil'),
+      h('h2', { style: 'margin:6px 0 10px' }, title), ...body()];
+  }
+
+  profileMenu() {
     const h = this.h.bind(this);
     const rank = rankFor(this.profile.rep);
     const nxt = nextRank(this.profile.rep);
     const pct = Math.round(rankProgress(this.profile.rep) * 100);
     const cleared = Object.keys(this.profile.cleared).length;
-    const out = [
+    const bagCount = Object.values(this.profile.items || {}).reduce((a, n) => a + n, 0);
+    const known = NPCS.filter((n) => isVisible(this.profile, n)).length;
+    const entry = (id, icon, title, sub) => h('button', { class: 'menu-row', onclick: () => { this.profileSub = id; this.render(); } },
+      h('div', { class: 'ic' }, this.ic(icon)), h('div', { class: 'main' }, h('b', {}, title), h('small', {}, sub)), h('span', { class: 'chev' }, '›'));
+    return [
       h('div', { class: 'section-h' }, 'Profil Operator'),
       h('div', { class: 'rankbox' },
         h('div', { class: 'rank-top' }, h('b', {}, rank.name), h('span', {}, `${this.profile.rep} rep`)),
@@ -1133,37 +1136,74 @@ export class App {
         h('small', {}, nxt ? `${nxt.min - this.profile.rep} rep lagi → ${nxt.name}` : 'Rank tertinggi tercapai.')),
       h('div', { class: 'stat-row' },
         h('div', { class: 'stat' }, h('b', {}, String(this.profile.credits)), h('small', {}, 'kredit')),
-        h('div', { class: 'stat' }, h('b', {}, `${cleared}/${WORLD_NODES.length}`), h('small', {}, 'target selesai')),
-        h('div', { class: 'stat' }, h('b', {}, String((this.profile.cmds || []).length)), h('small', {}, 'command'))),
-      h('div', { class: 'section-h' }, 'Tool (otomatis siap dipakai)')
+        h('div', { class: 'stat' }, h('b', {}, `${cleared}/${WORLD_NODES.length}`), h('small', {}, 'misi selesai')),
+        h('div', { class: 'stat' }, h('b', {}, String(this.profile.day ? fmtDateShort(this.profile.day) : '')), h('small', {}, 'hari ini'))),
+      h('div', { class: 'menu-list' },
+        entry('bag', 'bag', 'Inventory', bagCount ? `${bagCount} barang` : 'kosong'),
+        entry('contacts', 'users', 'Kontak', `${known} dikenal`),
+        entry('tools', 'wrench', 'Tool & Command', `${Object.values(this.profile.tools).filter(Boolean).length} tool · ${(this.profile.cmds || []).length} command`),
+        entry('archive', 'file', 'Arsip', `${this.profile.archive.length} file`),
+        entry('settings', 'gear', 'Pengaturan', 'bahasa, reset progres'))
     ];
+  }
+
+  profileBag() {
+    const h = this.h.bind(this);
+    const out = [];
+    const bag = Object.keys(ITEMS).filter((id) => countOf(this.profile, id) > 0);
+    if (!bag.length) out.push(h('div', { class: 'empty' }, 'Tas kosong.\nBeli barang di Pasar Gelap atau dapatkan dari misi dan kontrak.'));
+    for (const id of bag) {
+      out.push(h('div', { class: 'market-row' }, h('div', { class: 'main' }, h('b', {}, `${ITEMS[id].name} ×${countOf(this.profile, id)}`), h('small', {}, ITEMS[id].desc)),
+        ITEMS[id].usable && h('button', { class: 'buy', onclick: () => this.useKopi() }, 'PAKAI')));
+    }
+    return out;
+  }
+
+  profileContacts() {
+    const h = this.h.bind(this);
+    const out = [];
+    const known = NPCS.filter((n) => isVisible(this.profile, n));
+    if (!known.length) out.push(h('div', { class: 'empty' }, 'Belum kenal siapa pun.'));
+    for (const n of known) {
+      const st = npcState(this.profile, n.id), lv = levelOf(st.aff);
+      out.push(h('button', { class: 'menu-row', onclick: () => { this.overlay = { kind: 'npcinfo', id: n.id }; this.render(); } },
+        h('div', { class: 'ic' }, this.ic('profile')),
+        h('div', { class: 'main' }, h('b', {}, `${n.name} · ${LEVEL_NAMES[lv]}`), h('small', {}, lv > 0 ? n.perks[lv - 1] : n.role)),
+        h('span', { class: 'chev' }, '›')));
+    }
+    return out;
+  }
+
+  profileTools() {
+    const h = this.h.bind(this);
+    const out = [];
     for (const t of Object.values(TOOLS)) {
       const ownd = this.profile.tools[t.id];
       out.push(h('div', { class: 'tool' + (ownd ? '' : ' locked') },
         h('div', { class: 'hd' }, h('b', {}, t.name), h('span', { class: 'cost' }, t.cmd)),
         h('p', {}, ownd ? t.desc : '🔒 Beli di Pasar Gelap (peta, Selatan).')));
     }
-    out.push(h('div', { class: 'section-h' }, 'Tas'));
-    const bag = Object.keys(ITEMS).filter((id) => countOf(this.profile, id) > 0);
-    if (!bag.length) out.push(h('div', { class: 'empty' }, 'Tas kosong.'));
-    for (const id of bag) {
-      out.push(h('div', { class: 'market-row' }, h('div', { class: 'main' }, h('b', {}, `${ITEMS[id].name} ×${countOf(this.profile, id)}`), h('small', {}, ITEMS[id].desc)),
-        ITEMS[id].usable && h('button', { class: 'buy', onclick: () => this.useKopi() }, 'PAKAI')));
-    }
-    out.push(h('div', { class: 'section-h' }, 'Kontak'));
-    const known = NPCS.filter((n) => isVisible(this.profile, n));
-    for (const n of known) {
-      const st = npcState(this.profile, n.id), lv = levelOf(st.aff);
-      out.push(h('div', { class: 'market-row' }, h('div', { class: 'main' }, h('b', {}, `${n.name} · ${LEVEL_NAMES[lv]}`), h('small', {}, n.perks[Math.max(0, lv - 1)] && lv > 0 ? n.perks[lv - 1] : n.role))));
-    }
-    out.push(h('div', { class: 'section-h' }, 'Arsip (file tersimpan)'));
+    return out;
+  }
+
+  profileArchive() {
+    const h = this.h.bind(this);
+    const out = [];
     if (!this.profile.archive.length) out.push(h('div', { class: 'empty' }, 'Belum ada file tersimpan.'));
     for (const f of this.profile.archive) {
       out.push(h('button', { class: 'obj', onclick: () => { this.overlay = { kind: 'read', sheet: { title: f.name, content: f.content } }; this.render(); } },
         h('div', { class: 'ic' }, this.ic('doc')), h('div', { class: 'main' }, h('b', {}, f.name))));
     }
-    out.push(h('button', { class: 'linklike', onclick: () => this.confirmBox('Hapus semua progres?', 'Semua kredit, rep, dan progres misi akan hilang.', 'HAPUS', () => this.resetGame()) }, 'reset progres'));
     return out;
+  }
+
+  profileSettings() {
+    const h = this.h.bind(this);
+    return [
+      h('div', { class: 'section-h' }, 'Bahasa'),
+      h('div', { class: 'setting-note' }, 'Bahasa dipakai untuk seluruh tampilan, dialog, dan misi. Mengganti bahasa memuat ulang game; progresmu tetap tersimpan.'),
+      h('button', { class: 'linklike', onclick: () => this.confirmBox('Hapus semua progres?', 'Semua kredit, rep, dan progres misi akan hilang.', 'HAPUS', () => this.resetGame()) }, 'reset progres')
+    ];
   }
 
   paneObjectives() {
@@ -1305,7 +1345,7 @@ export class App {
     const active = NODE_PAGES.includes(this.view) ? 'terminal' : this.view;
     const row = h('div', { class: 'dock' });
     for (const [id, label] of TABS)
-      row.append(h('button', { class: 'dock-btn' + (id === active ? ' on' : ''), onclick: () => { this.view = id; this.overlay = null; this.render(); } },
+      row.append(h('button', { class: 'dock-btn' + (id === active ? ' on' : ''), onclick: () => { this.view = id; this.overlay = null; if (id === 'profile') this.profileSub = null; this.render(); } },
         h('span', { class: 'di' }, this.ic(TAB_ICON[id])), h('span', { class: 'dl' }, label)));
     return row;
   }
@@ -1344,6 +1384,12 @@ export class App {
       sheet.append(h('button', { class: 'act dim', onclick: close }, 'TUTUP'));
     } else if (o.kind === 'market') {
       sheet.append(...this.paneMarket(), h('button', { class: 'act dim', onclick: close }, 'TUTUP'));
+    } else if (o.kind === 'contracts') {
+      const rows = this.contractRows();
+      sheet.append(h('h2', {}, 'Biro Kontrak'),
+        h('p', { style: 'color:var(--muted);font-size:13px;margin:4px 0 12px' }, 'Klien yang puas menawarkan kontrak perawatan harian: sambung ke node awal misinya, buka File Server, dan kredit masuk.'),
+        ...(rows.length ? rows : [h('div', { class: 'empty' }, 'Belum ada kontrak.\nSelesaikan sebuah misi dulu — kliennya akan menawarkan kontrak di sini.')]),
+        h('button', { class: 'act dim', onclick: close }, 'TUTUP'));
     } else if (o.kind === 'legend') {
       const row = (sw, name, desc) => h('div', { class: 'lg-row' }, sw, h('div', {}, h('b', {}, name), h('small', {}, desc)));
       const mini = (cls, txt) => h('span', { class: 'lg-card ' + cls }, txt);
@@ -1362,7 +1408,8 @@ export class App {
         row(h('span', { class: 'lg-badge job' }, '★'), 'Ada kerjaan', 'Mereka menawarkan misi.'),
         row(h('span', { class: 'lg-badge turn' }, '✓'), 'Serahkan tugas', 'Misi mereka siap diserahkan.'),
         row(h('span', { class: 'lg-badge talk' }, '●'), 'Bisa ngobrol', 'Belum ngobrol hari ini.'),
-        row(tok('home', '⌂', '#f0c24a'), 'Safehouse', 'Tidur, warung kopi, kontrak.'),
+        row(tok('home', '⌂', '#f0c24a'), 'Safehouse', 'Tempat tidur untuk memulihkan Fokus.'),
+        row(tok('shop', '▤', '#4fd1c5'), 'Biro Kontrak', 'Ambil dan cek kontrak perawatan harian.'),
         row(tok('shop', '◆', '#ff8f5a'), 'Pasar Gelap', 'Beli tool, command, intel, dan upgrade. Ada di distrik Selatan.'),
         h('div', { class: 'section-h' }, 'Level akses'),
         h('div', { class: 'lg-lv' }, h('span', { class: 'lv-guest' }, 'TAMU'), h('span', { class: 'lv-user' }, 'USER'), h('span', { class: 'lv-admin' }, 'ADMIN')),
@@ -1386,9 +1433,7 @@ export class App {
           h('div', { class: 'focus-top' }, h('b', {}, `Fokus ${this.profile.focus}`), h('span', { class: 'fo ' + focusState(this.profile.focus) }, FOCUS_LABEL[focusState(this.profile.focus)])),
           h('div', { class: 'rankbar' }, h('i', { style: `width:${Math.min(100, this.profile.focus)}%` })),
           h('small', {}, 'Makin lelah, aksi makin mahal dan loading makin lama. Tidur memulihkan 1 Fokus per menit (waktu nyata).')),
-        ...this.supplyRows(),
-        ...this.contractRows(),
-        h('button', { class: 'jackin', onclick: () => this.goSleep() }, `▸ TIDUR · ${fmtGameTime(sleepPlan(this.profile, perksFor(this.profile).focusMax).minutes)} · hari berikutnya`),
+        h('button', { class: 'jackin', onclick: () => this.goSleep() }, '▸ TIDUR'),
         h('button', { class: 'act dim', onclick: close }, 'TUTUP'));
     } else if (o.kind === 'daystart') {
       const i = o.info, ev = perksFor(this.profile).event;
@@ -1458,7 +1503,7 @@ export class App {
         o.res.unlocked.length && h('p', { style: 'color:var(--cyan)' }, 'Tool terbuka: ' + o.res.unlocked.map((t) => TOOLS[t].name).join(', ')),
         Object.keys(o.res.items || {}).length && h('p', { style: 'color:var(--ink)' }, 'Dapat: ' + Object.entries(o.res.items).map(([id, n]) => `${ITEMS[id].name} ×${n}`).join(', ')),
         ...(o.res.notes || []).map((t) => h('p', { style: 'color:var(--cyan);font-size:12px' }, t)),
-        h('p', { style: 'color:var(--muted);font-size:12px' }, 'Klien menawarkan kontrak perawatan harian — cek di Safehouse.'),
+        h('p', { style: 'color:var(--muted);font-size:12px' }, 'Klien menawarkan kontrak perawatan harian — cek di Biro Kontrak.'),
         h('button', { class: 'act', onclick: close }, 'LANJUT'));
     }
     return h('div', { class: 'overlay', onclick: close }, sheet);
