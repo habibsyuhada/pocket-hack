@@ -39,6 +39,14 @@ berikutnya dan keuntungan (diskon, hint murah, Fokus, dll).
 - Semua perintah berjalan di balik **loading layar penuh**; Overclock di
   Pasar mempercepatnya. Hint berbayar kredit.
 
+## Versi 1: cerita, command, dan NPC
+- **Kota:** 6 distrik. Kawasan **Industri** terputus dari jaringan kota; hanya bisa dicapai dengan `ROUTE` dari **Menara Relay Selatan** (admin menara didapat di misi s17).
+- **22 misi** dalam 3 babak (s00–s21), cerita besar "Blackout / SENTINEL"; finale s21 punya 3 ending (lapor ke Pak Hadi, bocorkan ke Rani, jual ke Mbah Gun).
+- **NPC:** Bu Laras, Rani, Dimas, Mbah Gun, Pak Hadi, Vira, dr. Wulan, Kapten Sari.
+- **Command baru:** `PING` (gratis), `ROUTE`, `UPLOAD`, `EDIT` (beli di Pasar Gelap), `TRACE` (butuh tool Tracer). Tool baru: Sniffer (INSPECT menangkap lalu lintas) dan Tracer. Upgrade: RAM, Rig Pendingin, Kasur Empuk.
+- Kontrak penulisan misi baru: `docs/v1-spec.md`. Tiap misi di `src/sites/sNN_*.js` membawa `meta`, `edges`, `place`, `dialogue`, dan terjemahan di `src/i18n/extra/sNN.js`.
+- Belum di v1: paket Automation (TOOLS/RUN/QUEUE/SCRIPT), Heat, dan pencapaian.
+
 ## Navigasi
 
 Bottom bar: **Peta · Terminal · Goals · Profil**. **Pasar Gelap** (Selatan) dan **Biro Kontrak**
