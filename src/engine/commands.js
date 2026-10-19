@@ -11,7 +11,8 @@ export const CMD_META = {
   SCAN: { group: 'explore', kind: 'scan', desc: 'Pindai jaringan dari sini.' },
   INSPECT: { group: 'explore', kind: 'device', desc: 'Periksa perangkat terhubung.' },
   MAP: { group: 'explore', kind: 'map', desc: 'Buka peta jaringan.' },
-  ROUTE: { group: 'explore', kind: 'soon', desc: 'Lewati perangkat perantara.' },
+  PING: { group: 'explore', kind: 'ping', desc: 'Cek apakah node online (gratis).' },
+  ROUTE: { group: 'explore', kind: 'route', desc: 'Lompat lewat relay ke jaringan lain.' },
   // Akses
   CONNECT: { group: 'access', kind: 'connect', desc: 'Hubungkan ke perangkat.' },
   LOGIN: { group: 'access', kind: 'device', desc: 'Masuk dengan kredensial.' },
@@ -31,8 +32,9 @@ export const CMD_META = {
   DECRYPT: { group: 'feature', kind: 'file', desc: 'Buka file terenkripsi.' },
   COMPARE: { group: 'feature', kind: 'file', desc: 'Bandingkan dua file.' },
   SEARCH: { group: 'feature', kind: 'search', desc: 'Cari kata kunci di file node.' },
-  UPLOAD: { group: 'feature', kind: 'soon', desc: 'Kirim file ke sistem.' },
-  EDIT: { group: 'feature', kind: 'soon', desc: 'Ubah bagian file interaktif.' },
+  UPLOAD: { group: 'feature', kind: 'file', desc: 'Kirim file lokal ke node yang terhubung.' },
+  EDIT: { group: 'feature', kind: 'file', desc: 'Ubah bagian file yang interaktif.' },
+  TRACE: { group: 'feature', kind: 'file', desc: 'Lacak asal pesan atau koneksi (butuh tool Tracer).' },
   // Fitur halaman service
   PS: { group: 'feature', kind: 'system', desc: 'Lihat proses & layanan.' },
   STOP: { group: 'feature', kind: 'proc', desc: 'Hentikan proses.' },
@@ -56,7 +58,7 @@ export const GROUPS = [
 
 // Everything the 4 sites need, plus free navigation helpers — never locked.
 export const DEFAULT_CMDS = [
-  'SCAN', 'INSPECT', 'MAP', 'CONNECT', 'LOGIN', 'CRACK', 'EXPLOIT', 'ELEVATE', 'DISCONNECT',
+  'SCAN', 'INSPECT', 'MAP', 'PING', 'TRACE', 'CONNECT', 'LOGIN', 'CRACK', 'EXPLOIT', 'ELEVATE', 'DISCONNECT',
   'FILES', 'SERVICES', 'LS', 'READ', 'DOWNLOAD', 'RECOVER', 'DECRYPT', 'COMPARE',
   'PS', 'STOP', 'START', 'CONFIG', 'RESTORE', 'CONTROL'
 ];
@@ -73,7 +75,12 @@ export function commandTargets(ctx, cmd) {
   const out = [];
   const cur = run.current;
 
-  if (meta.kind === 'connect') {
+  if (meta.kind === 'route') {
+    if (cur) for (const id of device(run, cur).routes || []) {
+      const d = run.devices[id]; if (!d) continue;
+      const r = row({ type: 'device', id }, `${d.name} · ${d.addr}`); if (r) out.push(r);
+    }
+  } else if (meta.kind === 'connect' || meta.kind === 'ping') {
     // Only nodes wired to where you are now. Off the network, only the rig's uplink.
     const ids = new Set();
     if (cur) {

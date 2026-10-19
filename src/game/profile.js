@@ -4,13 +4,15 @@ import { t, tr } from '../i18n/index.js';
 export const TOOLS = {
   keyloom: { id: 'keyloom', name: 'KeyLoom', ram: 2, cmd: 'CRACK', desc: 'Menyusun kandidat kata sandi dari petunjuk yang kamu kumpulkan.' },
   mender: { id: 'mender', name: 'Mender', ram: 1, cmd: 'RECOVER', desc: 'Memulihkan file terhapus atau rusak.' },
-  cipher: { id: 'cipher', name: 'Cipher', ram: 1, cmd: 'DECRYPT', desc: 'Membuka file terkunci dengan kunci yang kamu simpulkan.' }
+  cipher: { id: 'cipher', name: 'Cipher', ram: 1, cmd: 'DECRYPT', desc: 'Membuka file terkunci dengan kunci yang kamu simpulkan.' },
+  sniffer: { id: 'sniffer', name: 'Sniffer', ram: 1, cmd: 'INSPECT', desc: 'INSPECT menangkap lalu lintas jaringan: kredensial dan petunjuk yang bocor.' },
+  tracer: { id: 'tracer', name: 'Tracer', ram: 1, cmd: 'TRACE', desc: 'Melacak asal pesan dan koneksi (perintah TRACE).' }
 };
 
 // Commands unlocked from the start — everything the 4 sites need, so the
 // player is never blocked. Kept here (not imported) to avoid a cycle.
 const DEFAULT_CMDS = [
-  'SCAN', 'INSPECT', 'MAP', 'CONNECT', 'LOGIN', 'CRACK', 'EXPLOIT', 'ELEVATE', 'DISCONNECT',
+  'SCAN', 'INSPECT', 'MAP', 'PING', 'TRACE', 'CONNECT', 'LOGIN', 'CRACK', 'EXPLOIT', 'ELEVATE', 'DISCONNECT',
   'FILES', 'SERVICES', 'LS', 'READ', 'DOWNLOAD', 'RECOVER', 'DECRYPT', 'COMPARE',
   'PS', 'STOP', 'START', 'CONFIG', 'RESTORE', 'CONTROL'
 ];

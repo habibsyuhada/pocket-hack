@@ -1,4 +1,5 @@
 import { t, tr } from '../i18n/index.js';
+import { hasCmd } from '../game/profile.js';
 import {
   LEVEL_LABEL, TOOLS, atLeast, applyEffects, configValid, device, findFile,
   fileVisible, lockingProc, reachable, visibleFiles
@@ -13,6 +14,8 @@ const A = (cmd, enabled, reason = '', choose = false) => ({ cmd, enabled, reason
 // How many files the rig can hold locally at once — forces the player to
 // choose what to exfiltrate instead of grabbing everything.
 export const LOCAL_CAP = 6;
+
+const lockedCmd = (profile, cmd) => (hasCmd(profile, cmd) ? '' : t('{1} terkunci. Beli di Pasar Gelap (peta, Selatan).', cmd));
 
 function needTool(profile, id) {
   return profile.tools[id] ? '' : t('Butuh tool {1}. Beli di Pasar Gelap (peta, Selatan).', TOOLS[id].name);
@@ -32,6 +35,15 @@ export function getActions(ctx, target) {
     const d = device(run, target.id);
     const here = run.current === d.id;
     out.push(A('INSPECT', true));
+    if (!here) out.push(A('PING', true));
+    // ROUTE: hop through the node you are on to a network that is not wired to it
+    const src = run.current ? device(run, run.current) : null;
+    if (src?.routes?.includes(d.id)) {
+      let why = lockedCmd(profile, 'ROUTE');
+      if (!why && !atLeast(src.access, src.routeAccess || 'guest')) why = t('Butuh akses {1} di {2}.', LEVEL_LABEL[src.routeAccess], src.name);
+      if (!why && !d.online) why = 'Perangkat sedang offline.';
+      out.push(A('ROUTE', !why, why));
+    }
     // SCAN a node once you hold access to it (reachable from the net map).
     if (atLeast(d.access, 'guest')) out.push(A('SCAN', true));
     if (!here) {
@@ -64,6 +76,18 @@ export function getActions(ctx, target) {
       out.push(A('READ', !f.encrypted, 'File terenkripsi.'));
       if (f.encrypted) out.push(A('DECRYPT', !needTool(profile, 'cipher'), needTool(profile, 'cipher'), true));
       if (f.compare && !f.encrypted) out.push(A('COMPARE', true, '', true));
+      if (f.trace && !run.flags.includes(`traced_${f.id}`)) {
+        const why = lockedCmd(profile, 'TRACE') || needTool(profile, 'tracer');
+        out.push(A('TRACE', !why, why));
+      }
+      const cur = run.current ? device(run, run.current) : null;
+      const slot = cur?.uploads?.find((u) => u.file === f.id);
+      if (slot) {
+        let why = lockedCmd(profile, 'UPLOAD');
+        if (!why && slot.done) why = 'Sudah terkirim.';
+        if (!why && !atLeast(cur.access, slot.minAccess || 'user')) why = t('Butuh akses {1}.', LEVEL_LABEL[slot.minAccess || 'user']);
+        out.push(A('UPLOAD', !why, why));
+      }
       out.push(A('DELETE', true));
       return out;
     }
@@ -85,6 +109,14 @@ export function getActions(ctx, target) {
     }
     if (f.deleted || f.corrupt) out.push(A('RECOVER', !needTool(profile, 'mender'), needTool(profile, 'mender')));
     if (f.compare && !readWhy) out.push(A('COMPARE', true, '', true));
+    if (f.edit && !f.edited) {
+      const why = lockedCmd(profile, 'EDIT') || readWhy || (atLeast(d.access, f.edit.minAccess || 'admin') ? '' : t('Butuh akses {1}.', LEVEL_LABEL[f.edit.minAccess || 'admin']));
+      out.push(A('EDIT', !why, why, true));
+    }
+    if (f.trace && !run.flags.includes(`traced_${f.id}`)) {
+      const why = lockedCmd(profile, 'TRACE') || needTool(profile, 'tracer') || readWhy;
+      out.push(A('TRACE', !why, why));
+    }
     return out;
   }
 
@@ -140,6 +172,10 @@ export function getChoices(ctx, cmd, target) {
     return pool
       .filter((p) => p.f.compare === f.compare && !seen.has(p.f.id) && seen.add(p.f.id))
       .map((p) => ({ value: p.f.id, label: `${p.f.name}  (${tr(p.where)})` }));
+  }
+  if (cmd === 'EDIT') {
+    const f = findFile(run, target);
+    return (f.edit?.options || []).map((o) => ({ value: o, label: o }));
   }
   if (cmd === 'CONFIG') {
     const p = device(run, target.device).procs.find((x) => x.id === target.id);
@@ -201,7 +237,56 @@ export function exec(ctx, cmd, target, arg) {
       sheet = { type: 'read', title: d.name, content: d.inspect };
       out.push({ t: 'out', text: t('{1} · akses kamu: {2}', d.kind, LEVEL_LABEL[d.access]) });
       applyEffects(run, mission, d.onInspect, out);
+      if (d.sniff && profile.tools?.sniffer) {
+        out.push({ t: 'ok', text: 'Sniffer menangkap lalu lintas jaringan node ini:' });
+        out.push({ t: 'out', text: tr(d.sniff.text) });
+        sheet = { type: 'read', title: d.name, content: `${d.inspect}\n\n— ${t('Hasil Sniffer')} —\n${d.sniff.text}` };
+        applyEffects(run, mission, d.sniff.fx, out);
+      }
       break;
+    case 'PING': {
+      if (!d.online) { out.push({ t: 'warn', text: t('{1}: tidak ada balasan (offline).', d.addr) }); break; }
+      const ms = 6 + ([...d.addr].reduce((n, c) => n + c.charCodeAt(0), 0) % 47);
+      out.push({ t: 'ok', text: t('Balasan dari {1}: {2} ms.', d.addr, ms) });
+      break;
+    }
+    case 'ROUTE': {
+      const via = device(run, run.current);
+      run.current = d.id;
+      d.discovered = true;
+      if (d.open && !atLeast(d.access, d.open)) d.access = d.open;
+      out.push({ t: 'ok', text: t('Rute via {1} dibuka. Terhubung ke {2}. Akses: {3}.', via.name, d.name, LEVEL_LABEL[d.access]) });
+      applyEffects(run, mission, d.onConnect, out);
+      break;
+    }
+    case 'UPLOAD': {
+      const cur = device(run, run.current);
+      const slot = cur.uploads.find((u) => u.file === target.id);
+      slot.done = true;
+      out.push({ t: 'ok', text: tr(slot.text) || t('{1} terkirim ke {2}.', findFile(run, target).name, cur.name) });
+      applyEffects(run, mission, slot.fx, out);
+      break;
+    }
+    case 'EDIT': {
+      const f = findFile(run, target);
+      if (arg === f.edit.answer) {
+        f.edited = true;
+        if (f.edit.result) Object.assign(f, f.edit.result);
+        out.push({ t: 'ok', text: t('{1} diperbarui: "{2}".', f.name, arg) });
+        applyEffects(run, mission, f.edit.onDone, out);
+      } else {
+        out.push({ t: 'warn', text: t('Perubahan "{1}" tidak cocok dengan catatan. File dibiarkan seperti semula.', arg) });
+      }
+      break;
+    }
+    case 'TRACE': {
+      const f = findFile(run, target);
+      run.flags.push(`traced_${f.id}`);
+      sheet = { type: 'read', title: `TRACE · ${f.name}`, content: f.trace.text };
+      out.push({ t: 'ok', text: t('Jejak {1} berhasil dilacak.', f.name) });
+      applyEffects(run, mission, f.trace.fx, out);
+      break;
+    }
     case 'CONNECT': {
       run.current = d.id;
       if (d.open && !atLeast(d.access, d.open)) d.access = d.open;

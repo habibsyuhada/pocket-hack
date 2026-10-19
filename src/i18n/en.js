@@ -954,3 +954,6 @@ export const EN = {
   "TIDUR": "SLEEP",
   "NANTI": "LATER"
 };
+
+import { EXTRA_EN } from './extra/index.js';
+Object.assign(EN, EXTRA_EN);

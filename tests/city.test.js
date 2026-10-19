@@ -7,9 +7,9 @@ const devices = CITY.world.devices;
 const ids = Object.keys(devices);
 
 describe('city graph', () => {
-  it('has many nodes across five districts', () => {
+  it('has many nodes across six districts', () => {
     expect(ids.length).toBeGreaterThanOrEqual(30);
-    expect(new Set(ids.map((i) => devices[i].district)).size).toBe(5);
+    expect(new Set(ids.map((i) => devices[i].district)).size).toBe(6);
   });
 
   it('every node is placed on the map inside the canvas', () => {
@@ -31,7 +31,7 @@ describe('city graph', () => {
     const queue = [...seen];
     while (queue.length) {
       const d = devices[queue.pop()];
-      for (const l of d.links || []) if (!seen.has(l)) { seen.add(l); queue.push(l); }
+      for (const l of [...(d.links || []), ...(d.routes || [])]) if (!seen.has(l)) { seen.add(l); queue.push(l); }
     }
     expect([...ids].filter((i) => !seen.has(i))).toEqual([]);
   });
@@ -42,8 +42,12 @@ describe('city graph', () => {
     expect(START_NODES).toEqual(['isp_core']);
     expect(devices.isp_core.open).toBe('guest');
     const hubs = ids.filter((i) => devices[i].hub);
-    expect(hubs.length).toBe(5);
-    for (const h of hubs) { expect(devices[h].open).toBe('guest'); expect(devices.isp_core.links).toContain(h); }
+    expect(hubs.length).toBe(6);
+    for (const h of hubs) expect(devices[h].open).toBe('guest');
+    // the industrial estate is cut off from the city: only reachable by ROUTE from the relay tower
+    for (const h of hubs.filter((x) => x !== 'industri_hub')) expect(devices.isp_core.links).toContain(h);
+    expect(devices.isp_core.links).not.toContain('industri_hub');
+    expect(devices.menara_relay.routes).toContain('industri_hub');
   });
 
   it('every mission start node is reachable from the ISP uplink', () => {

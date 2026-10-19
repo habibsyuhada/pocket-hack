@@ -138,7 +138,9 @@ describe('day & focus', () => {
     expect(eventFor(onWeekday(0))).toBe(EVENTS.festival);   // Minggu
     expect(eventFor(onWeekday(3))).toBe(EVENTS.pasar);      // Rabu
     expect(eventFor(onWeekday(5))).toBe(EVENTS.padam);      // Jumat
-    for (const w of [1, 2, 4, 6]) expect(eventFor(onWeekday(w))).toBeNull();
+    expect(eventFor(onWeekday(4))).toBe(EVENTS.kampus);     // Kamis
+    expect(eventFor(onWeekday(6))).toBe(EVENTS.subuh);      // Sabtu
+    for (const w of [1, 2]) expect(eventFor(onWeekday(w))).toBeNull();
     expect(seasonName(dayIndex(new Date(2026, 6, 10).getTime()))).toBe('Kemarau');
     expect(seasonName(dayIndex(new Date(2026, 0, 10).getTime()))).toBe('Penghujan');
     expect(seasonName(dayIndex(new Date(2026, 3, 10).getTime()))).toBe('Pancaroba');

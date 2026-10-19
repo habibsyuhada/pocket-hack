@@ -1,4 +1,4 @@
-import { siteById } from '../sites/index.js';
+import { SITES, siteById } from '../sites/index.js';
 import { npcById, npcLevel, isVisible } from './npc.js';
 
 export const CITY = { id: 'surabaya', name: 'Surabaya' };
@@ -14,6 +14,10 @@ export const MISSIONS = [
   { id: 's01', giver: 'dimas', minLevel: 1, district: 'Barat', difficulty: 3, repReward: 120, short: 'Lab arsip — blueprint hilang.' },
   { id: 's03', giver: 'gun', minLevel: 0, district: 'Selatan', difficulty: 4, repReward: 180, short: 'Bursa kripto — buku besar palsu.' }
 ];
+// New missions describe themselves (`meta` in their site file); they join the list in order.
+for (const site of SITES) {
+  if (site.meta && !MISSIONS.some((m) => m.id === site.id)) MISSIONS.push({ id: site.id, ...site.meta });
+}
 // legacy name kept for callers that only need the list
 export const WORLD_NODES = MISSIONS;
 
@@ -33,6 +37,7 @@ export function nodeState(profile, id) {
   if (!m) return 'hidden';
   if (profile.cleared[id]) return 'cleared';
   if (profile.accepted?.[id]) return 'accepted';
+  if ((m.requires || []).some((r) => !profile.cleared[r])) return 'locked';
   const npc = npcById(m.giver);
   if (npc && isVisible(profile, npc) && npcLevel(profile, m.giver) >= m.minLevel) return 'open';
   return 'locked';

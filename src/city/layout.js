@@ -1,6 +1,6 @@
 // Open-world map layout. Everything sits on a coarse grid so cards never
 // overlap: cells are 260 wide × 170 tall; a node card is ~112 × 80.
-export const MAPW = 2400;
+export const MAPW = 3700;
 export const MAPH = 2900;
 const GX = 140, GY = 140, SX = 260, SY = 170;
 
@@ -22,7 +22,16 @@ export const PLACE = {
   sekolah_nas: [6, 9, 'timur'], balai_printer: [8, 9, 'timur'],
   // Selatan — pasar
   selatan_hub: [4, 13, 'selatan'], edge: [4, 14, 'selatan'], ops: [3, 15, 'selatan'], cold: [5, 15, 'selatan'],
-  pasar_pos: [3, 12, 'selatan'], gudang_nas: [5, 12, 'selatan']
+  pasar_pos: [3, 12, 'selatan'], gudang_nas: [5, 12, 'selatan'],
+  // Tengah (utara sisi) — balai kelurahan
+  kelurahan_nas: [4, 5, 'tengah'], pos_satpam: [5, 5, 'tengah'],
+  // Utara — gerbang tol
+  gate_tol: [6, 2, 'utara'],
+  // Selatan — relay menuju kawasan industri
+  menara_relay: [7, 13, 'selatan'],
+  // Industri — hotspot kawasan pabrik (hanya lewat ROUTE)
+  industri_hub: [10, 13, 'industri']
+  // Missions add their own nodes with `place: { id: [col, row, district] }`.
 };
 
 export const SAFEHOUSE_CELL = [3, 10];
@@ -36,7 +45,11 @@ export const NPC_CELLS = {
   laras: [[3, 8], [5, 8], [4, 9]],
   rani: [[4, 2], [6, 4], [5, 2]],
   dimas: [[1, 8], [1, 5], [2, 10]],
-  gun: [[4, 12], [6, 13], [2, 13]]
+  gun: [[4, 12], [6, 13], [2, 13]],
+  hadi: [[2, 4], [6, 5], [4, 3]],
+  wulan: [[7, 8], [7, 6], [7, 9]],
+  sari: [[8, 8], [9, 6], [10, 7]],
+  vira: [[0, 7], [2, 7], [1, 6]]
 };
 
 export const DISTRICTS = [
@@ -44,7 +57,8 @@ export const DISTRICTS = [
   { id: 'barat', name: 'BARAT · Kampus', at: [1, 5.55] },
   { id: 'tengah', name: 'TENGAH · Alun-Alun', at: [4, 6] },
   { id: 'timur', name: 'TIMUR · Pelabuhan', at: [7, 4.4] },
-  { id: 'selatan', name: 'SELATAN · Pasar', at: [4, 11.2] }
+  { id: 'selatan', name: 'SELATAN · Pasar', at: [4, 11.2] },
+  { id: 'industri', name: 'INDUSTRI · Kawasan Pabrik', at: [10.5, 10.4] }
 ];
 
 export const placeOf = (id) => {

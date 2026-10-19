@@ -25,7 +25,15 @@ export const NPCS = [
   { id: 'dimas', name: 'Dimas', role: 'Teknisi warnet', site: 's01', unlockRep: 60, likes: 'komponen',
     perks: ['Diskon 15% Overclock', 'Loading −15%', 'Biaya Fokus −15%', 'Biaya Fokus −30% & Overclock 40%'] },
   { id: 'gun', name: 'Mbah Gun', role: 'Broker pasar gelap', site: 's03', unlockRep: 120, likes: 'rongsok',
-    perks: ['Diskon 10% command & tool', 'SEARCH gratis', 'Diskon 25% command & tool', 'Kredit misi +20%'] }
+    perks: ['Diskon 10% command & tool', 'SEARCH gratis', 'Diskon 25% command & tool', 'Kredit misi +20%'] },
+  { id: 'hadi', name: 'Pak Hadi', role: 'Lurah Kelurahan', site: 's08', unlockRep: 40, likes: 'nasi',
+    perks: ['Reputasi misi +10%', 'Biaya Fokus −5%', 'Hint hanya ◆7', 'Kredit misi +10%'] },
+  { id: 'vira', name: 'Vira', role: 'Mahasiswi sistem informasi', site: 's10', unlockRep: 60, likes: 'usb',
+    perks: ['Diskon 10% tool Pasar', 'Hint ◆8', 'Reputasi misi +10%', 'Biaya Fokus −10%'] },
+  { id: 'wulan', name: 'dr. Wulan', role: 'Dokter Klinik Pratama', site: 's12', unlockRep: 130, likes: 'obat',
+    perks: ['Kopi memulihkan Fokus ×1,25', 'Fokus harian +10', 'Biaya Fokus −10%', 'Kopi memulihkan Fokus ×1,5'] },
+  { id: 'sari', name: 'Kapten Sari', role: 'Kepala Syahbandar', site: 's13', unlockRep: 170, likes: 'peta',
+    perks: ['Diskon 15% intel', 'Loading −10%', 'Diskon 15% Overclock', 'Diskon 30% intel'] }
 ];
 
 export const npcById = (id) => NPCS.find((n) => n.id === id);
@@ -110,8 +118,8 @@ export function gift(profile, id, itemId, now = Date.now()) {
 }
 
 // Clearing a site for the first time warms up the NPC tied to it.
-export function missionBond(profile, siteId) {
-  const npc = npcForSite(siteId);
+export function missionBond(profile, siteId, giverId) {
+  const npc = npcById(giverId) || npcForSite(siteId);
   if (!npc) return [];
   const st = npcState(profile, npc.id);
   st.aff += MISSION_GAIN;

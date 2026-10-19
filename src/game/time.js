@@ -10,7 +10,8 @@ export const FOCUS_COST = {
   SCAN: 3, CONNECT: 2, DISCONNECT: 0, INSPECT: 1,
   LOGIN: 5, CRACK: 5, EXPLOIT: 5, ELEVATE: 4,
   READ: 1, DOWNLOAD: 2, RECOVER: 3, DECRYPT: 4, COMPARE: 3, SEARCH: 2,
-  LS: 1, PS: 1, STOP: 2, START: 2, CONFIG: 3, RESTORE: 2, CONTROL: 2
+  LS: 1, PS: 1, STOP: 2, START: 2, CONFIG: 3, RESTORE: 2, CONTROL: 2,
+  PING: 0, ROUTE: 3, UPLOAD: 3, EDIT: 3, TRACE: 4
 };
 const DEFAULT_COST = 2;
 
@@ -100,15 +101,21 @@ export const EVENTS = {
   pasar: { id: 'pasar', name: 'Hari Pasar', desc: 'Semua barang di Pasar diskon 20%.',
     marketDiscount: 0.2 },
   padam: { id: 'padam', name: 'Pemadaman Listrik', desc: 'Loading lebih lambat, tapi lembur dibayar: kontrak +30%.',
-    loading: 1.5, retainerMult: 1.3 }
+    loading: 1.5, retainerMult: 1.3 },
+  kampus: { id: 'kampus', name: 'Hari Kampus', desc: 'Tool dan command di Pasar diskon 20%.',
+    toolDiscount: 0.2 },
+  subuh: { id: 'subuh', name: 'Pasar Subuh', desc: 'Barang di Pasar diskon 30%. Pagi-pagi stok melimpah.',
+    goodsDiscount: 0.3 }
 };
 
-// Sunday: Lomba Mingguan · Wednesday: Hari Pasar · Friday: Pemadaman Listrik
+// Sun: Lomba Mingguan · Wed: Hari Pasar · Thu: Hari Kampus · Fri: Pemadaman Listrik · Sat: Pasar Subuh
 export function eventFor(day) {
   const w = weekdayOf(day);
   if (w === 0) return EVENTS.festival;
   if (w === 3) return EVENTS.pasar;
   if (w === 5) return EVENTS.padam;
+  if (w === 4) return EVENTS.kampus;
+  if (w === 6) return EVENTS.subuh;
   return null;
 }
 

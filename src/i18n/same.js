@@ -125,3 +125,6 @@ export const SAME = [
   "October",
   "December"
 ];
+
+import { EXTRA_SAME } from './extra/index.js';
+SAME.push(...EXTRA_SAME);

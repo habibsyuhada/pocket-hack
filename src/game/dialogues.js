@@ -1,15 +1,11 @@
 // All NPC dialogue lives here, separate from logic, so writing / tweaking
 // lines never touches code.  Line shape: { who: 'npc' | 'you', text, mood }.
 // mood picks the standing picture (normal | happy | worried | serious).
-const L = (who, text, mood = 'normal') => ({ who, text, mood });
-const N = (text, mood) => L('npc', text, mood);
-const Y = (text) => L('you', text);
+import { N, Y, scene, opt } from './dlg.js';
+import { NEW_DIALOGUES } from './dialogues_new.js';
+import { siteById } from '../sites/index.js';
 
-// A scene = lines, then an optional choice. Each option: label, affinity bonus, reply lines.
-const scene = (id, band, lines, options) => ({ id, band, lines, choice: options ? { options } : null });
-const opt = (label, bonus, ...lines) => ({ label, bonus, lines });
-
-export const DIALOGUES = {
+const BASE = {
   // ---------------------------------------------------------------- Bu Laras
   laras: {
     greet: [
@@ -248,6 +244,8 @@ export const DIALOGUES = {
   }
 };
 
+export const DIALOGUES = { ...BASE, ...NEW_DIALOGUES };
+
 // ---------- helpers (pure) ----------
 const BANDS = { low: [0, 1], mid: [2, 3], high: [4, 4] };
 export const bandOf = (level) => (level >= 4 ? 'high' : level >= 2 ? 'mid' : 'low');
@@ -262,8 +260,9 @@ export function talkSceneFor(npcId, level, day, aff = 0) {
   return pool[(day + aff) % pool.length];
 }
 
-export const offerSceneFor = (npcId, missionId) => DIALOGUES[npcId].offers[missionId] || null;
-export const turnInSceneFor = (npcId, missionId) => DIALOGUES[npcId].turnIn?.[missionId] || [{ who: 'npc', text: 'Sudah selesai? Coba kulihat hasilnya.', mood: 'normal' }];
+// New missions carry their own offer / turn-in lines in `dialogue` (see sites/sXX).
+export const offerSceneFor = (npcId, missionId) => DIALOGUES[npcId].offers?.[missionId] || siteById(missionId)?.dialogue?.offer || null;
+export const turnInSceneFor = (npcId, missionId) => DIALOGUES[npcId].turnIn?.[missionId] || siteById(missionId)?.dialogue?.turnIn || [{ who: 'npc', text: 'Sudah selesai? Coba kulihat hasilnya.', mood: 'normal' }];
 export const thanksLine = (npcId) => DIALOGUES[npcId].thanks;
 export const noOfferLine = (npcId, kind) => DIALOGUES[npcId].noOffer[kind];
 export const giftLines = (npcId, liked) => DIALOGUES[npcId].gift[liked ? 'liked' : 'other'];

@@ -5,14 +5,14 @@
 import { SITES } from '../sites/index.js';
 import { dressWorld } from '../sites/flavor.js';
 import { GENERIC_NODES, EXTRA_NODES, EDGES } from './nodes.js';
-import { placeOf, DISTRICTS } from './layout.js';
+import { placeOf, DISTRICTS, PLACE } from './layout.js';
 
 const clone = (o) => structuredClone(o);
 
 function mergePatch(dev, patch) {
   for (const [k, v] of Object.entries(patch)) {
-    if (['files', 'procs', 'controls'].includes(k)) dev[k] = [...(dev[k] || []), ...clone(v)];
-    else if (k === 'links') dev.links = [...new Set([...(dev.links || []), ...v])];
+    if (['files', 'procs', 'controls', 'uploads'].includes(k)) dev[k] = [...(dev[k] || []), ...clone(v)];
+    else if (k === 'links' || k === 'routes') dev[k] = [...new Set([...(dev[k] || []), ...v])];
     else dev[k] = clone(v);
   }
 }
@@ -56,6 +56,14 @@ function buildCity() {
 
   // undirected links between generic nodes / mission entry nodes
   for (const [a, b] of EDGES) link(devices, a, b);
+  // missions may bring their own links and map cells (kept next to their nodes)
+  for (const m of SITES) {
+    for (const [a, b] of m.edges || []) link(devices, a, b);
+    for (const [id, cell] of Object.entries(m.place || {})) {
+      if (PLACE[id] && PLACE[id].join() !== cell.join()) throw new Error(`city: ${m.id} re-places node "${id}"`);
+      PLACE[id] = cell;
+    }
+  }
 
   // placement
   for (const [id, d] of Object.entries(devices)) {
@@ -80,7 +88,7 @@ function buildCity() {
 export const CITY = buildCity();
 export { DISTRICTS };
 // bump when city content changes so saved runs are rebuilt (progress is carried over)
-export const CITY_VERSION = 2;
+export const CITY_VERSION = 3;
 export const START_NODES = ['isp_core'];             // your rig's uplink, known from day one
 
 export const missionOfNode = (id) => CITY.owner[id] || null;

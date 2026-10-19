@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const imp = (p) => import(path.join(root, p));
 
-const SKIP_KEYS = new Set(['id', 'kind', 'addr', 'minAccess', 'level', 'account', 'device', 'answer', 'options', 'keyOptions', 'states', 'state',
+const SKIP_KEYS = new Set(['id', 'kind', 'addr', 'minAccess', 'level', 'account', 'device', 'keyOptions', 'states', 'state',
   'compare', 'requiresProc', 'control', 'entry', 'links', 'district', 'giver', 'site', 'likes', 'cmd', 'cmds', 'group', 'tool', 'item', 'section',
   'unlockTools', 'flags', 'clues', 'creds', 'reveal', 'online', 'device', 'band', 'who', 'mood', 'key', 'rigScan', 'owner']);
 const FILENAME = /^[\w.-]+\.\w{2,5}$/;

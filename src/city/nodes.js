@@ -12,6 +12,43 @@ const hub = (id, name, addr, district, inspect, extra = {}) => ({
 });
 
 export const GENERIC_NODES = [
+  // ===== Industri (kawasan pabrik, hanya lewat ROUTE) =====
+  hub('industri_hub', 'Hotspot Kawasan Industri', '10.80.255.1', 'industri',
+    'Hotspot kawasan pabrik. Jaringan ini tidak tersambung ke kota — hanya bisa dicapai lewat relay.\nGardu listrik, menara air, gudang pendingin, dan ruang kontrol pabrik berbagi jaringan ini.',
+    { routes: ['menara_relay'], open: 'guest' }),
+  {
+    id: 'menara_relay', name: 'Menara Relay Selatan', kind: 'Gateway', addr: '10.9.200.1', online: true, open: 'guest',
+    routes: ['industri_hub'], routeAccess: 'admin',
+    inspect: 'Menara relay tua di ujung pasar. Satu-satunya jembatan ke jaringan kawasan industri.\nPerlu akses admin untuk membuka rute — ROUTE tidak akan jalan untuk tamu.',
+    files: [
+      { id: 'relay_catatan', name: 'catatan_relay.txt', minAccess: 'guest',
+        content: 'CATATAN RELAY\n\nRute ke kawasan industri hanya dibuka oleh admin menara.\nSemua lalu lintas ke sana melewati ROUTE, bukan sambungan biasa.' }
+    ]
+  },
+  {
+    id: 'kelurahan_nas', name: 'NAS Kantor Kelurahan', kind: 'NAS', addr: '10.0.50.2', online: true, open: 'guest',
+    inspect: 'Penyimpanan berkas kantor kelurahan. Hanya pengumuman publik yang terbuka.',
+    files: [
+      { id: 'pengumuman_lurah', name: 'pengumuman_kelurahan.txt', minAccess: 'guest',
+        content: 'PENGUMUMAN KELURAHAN\n\nLayanan KTP: Senin–Kamis pukul 08.00–14.00.\nRapat warga: Jumat malam di balai.\nLaporan gangguan jaringan: datangi Pak Hadi.' }
+    ]
+  },
+  {
+    id: 'pos_satpam', name: 'Pos Satpam Alun-Alun', kind: 'Workstation', addr: '10.0.51.3', online: true, open: 'guest',
+    inspect: 'PC jaga satpam alun-alun. Hanya buku jaga dasar yang terbuka.',
+    files: [
+      { id: 'buku_jaga', name: 'buku_jaga.txt', minAccess: 'guest',
+        content: 'BUKU JAGA\n\n06.00 patroli pagi, aman.\n13.00 pedagang minta pindah lapak, ditolak.\n22.00 lampu taman mati tiga titik.' }
+    ]
+  },
+  {
+    id: 'gate_tol', name: 'Gerbang Tol Utara', kind: 'Gateway', addr: '10.20.15.1', online: true, open: 'guest',
+    inspect: 'Panel monitor gerbang tol. Hanya statistik lalu lintas yang terbuka untuk tamu.',
+    files: [
+      { id: 'statistik_tol', name: 'statistik_tol.txt', minAccess: 'guest',
+        content: 'STATISTIK GERBANG\n\nPagi 1.240 kendaraan · Siang 880 · Malam 410\nGardu 3 sering macet karena sensor kotor.' }
+    ]
+  },
   // ===== Tengah =====
   hub('tengah_hub', 'Hotspot Alun-Alun', '10.0.255.1', 'tengah',
     'Hotspot publik alun-alun. Pusat jaringan Kota Lama.\nBanyak perangkat warga dan kota tersambung di sini.'),
@@ -130,11 +167,12 @@ export const EDGES = [
   ['timur_hub', 'radio_server'], ['timur_hub', 'klinik_ws'], ['timur_hub', 'sekolah_nas'], ['timur_hub', 'balai_printer'],
   ['klinik_ws', 'sekolah_nas'],
   // Selatan
+  ['tengah_hub', 'kelurahan_nas'], ['tengah_hub', 'pos_satpam'], ['utara_hub', 'gate_tol'], ['selatan_hub', 'menara_relay'],
   ['selatan_hub', 'edge'], ['selatan_hub', 'pasar_pos'], ['selatan_hub', 'gudang_nas'], ['pasar_pos', 'gudang_nas']
 ];
 
 // Hotspots a rig scan can pick up from the street.
-export const HUBS = ['tengah_hub', 'utara_hub', 'barat_hub', 'timur_hub', 'selatan_hub'];
+export const HUBS = ['tengah_hub', 'utara_hub', 'barat_hub', 'timur_hub', 'selatan_hub', 'industri_hub'];
 // Balai Printer is a plain city node that missions can patch.
 export const EXTRA_NODES = [
   {

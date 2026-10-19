@@ -9,14 +9,22 @@ export const PORTRAITS = {
   laras: { normal: null, happy: null, worried: null, serious: null },
   rani: { normal: null, happy: null, worried: null, serious: null },
   dimas: { normal: null, happy: null, worried: null, serious: null },
-  gun: { normal: null, happy: null, worried: null, serious: null }
+  gun: { normal: null, happy: null, worried: null, serious: null },
+  hadi: { normal: null, happy: null, worried: null, serious: null },
+  vira: { normal: null, happy: null, worried: null, serious: null },
+  wulan: { normal: null, happy: null, worried: null, serious: null },
+  sari: { normal: null, happy: null, worried: null, serious: null }
 };
 
 export const PLACEHOLDER = {
   laras: { color: '#e8a35a', initial: 'L' },
   rani: { color: '#6ec7e8', initial: 'R' },
   dimas: { color: '#9b8cff', initial: 'D' },
-  gun: { color: '#d9645a', initial: 'G' }
+  gun: { color: '#d9645a', initial: 'G' },
+  hadi: { color: '#7fb069', initial: 'H' },
+  vira: { color: '#e87fb0', initial: 'V' },
+  wulan: { color: '#5fd1b6', initial: 'W' },
+  sari: { color: '#5b8def', initial: 'S' }
 };
 
 // URL of the picture for this NPC + mood, or null → use the placeholder.

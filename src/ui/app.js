@@ -11,7 +11,7 @@ import { greetingFor, talkSceneFor, offerSceneFor, noOfferLine, giftLines, turnI
 import { readyFrom, endingsFor, awaitingTurnIn } from '../game/turnin.js';
 import { PLACEHOLDER, portraitSrc } from './portraits.js';
 import { MARKET, buy, canBuy, owned, priceFor } from '../game/market.js';
-import { ITEMS, KOPI_FOCUS, MISSION_ITEMS, addItem, addAll, removeItem, countOf, contractDrop } from '../game/items.js';
+import { ITEMS, KOPI_FOCUS, isKey, missionItems, addItem, addAll, removeItem, countOf, contractDrop } from '../game/items.js';
 import { NPCS, LEVEL_NAMES, AFF_STEPS, npcById, npcState, npcLevel, levelOf, levelProgress, isVisible, npcSpot, canTalk, canGift, talkWait, giftWait, talk, gift, missionBond } from '../game/npc.js';
 import { eventFor, focusCostFor, restoreFocus, loadingMult, spendFocus, startSleep, sleepPlan, sleepProgress, finishSleep, wakeEarly, fmtGameTime, fmtClock, fmtDate, fmtDateShort, dayIndex, syncDay, focusState, FOCUS_LABEL, seasonName } from '../game/time.js';
 import { perksFor } from '../game/perks.js';
@@ -31,7 +31,12 @@ const NO_TARGET = {
   EXPLOIT: 'Tidak ada celah yang ditemukan di node ini.',
   ELEVATE: 'Tidak ada jalur untuk menaikkan hak akses di sini.',
   INSPECT: 'Tidak ada yang bisa diperiksa.',
-  SEARCH: 'Tidak ada file untuk dipindai di node ini.'
+  SEARCH: 'Tidak ada file untuk dipindai di node ini.',
+  PING: 'Tidak ada perangkat yang terlihat. Jalankan SCAN dulu.',
+  ROUTE: 'Node ini tidak punya relay ke jaringan lain.',
+  UPLOAD: 'Tidak ada file lokal yang bisa dikirim ke node ini.',
+  EDIT: 'Tidak ada file yang bisa diubah di node ini.',
+  TRACE: 'Tidak ada pesan atau koneksi yang bisa dilacak di sini.'
 };
 const NOT_CONNECTED = {
   DEFAULT: 'Belum terhubung ke node mana pun. Jalankan CONNECT dulu.',
@@ -254,13 +259,14 @@ export class App {
     this.withLoading(cmd, () => { this.persist(); this.render(); this.toast(message); });
   }
 
-  useKopi() {
+  useItem(id) {
     const mods = perksFor(this.profile);
-    if (!countOf(this.profile, 'kopi')) return this.toast('Kamu tidak punya kopi.');
+    if (!countOf(this.profile, id)) return this.toast('Barang tidak ada di tas.');
     if (this.profile.focus >= mods.focusMax) return this.toast('Fokus sudah penuh.');
-    removeItem(this.profile, 'kopi');
+    removeItem(this.profile, id);
     const before = this.profile.focus;
-    restoreFocus(this.profile, Math.round(KOPI_FOCUS * mods.kopiMult), mods.focusMax);
+    const base = id === 'kopi' ? KOPI_FOCUS : ITEMS[id].focus;
+    restoreFocus(this.profile, Math.round(base * (id === 'kopi' ? mods.kopiMult : 1)), mods.focusMax);
     this.persist();
     this.render();
     this.toast(t('Fokus +{1}. Segar lagi.', this.profile.focus - before), 'hint');
@@ -382,7 +388,7 @@ export class App {
 
   // ---------- commands ----------
   runCommand(cmd, target) {
-    const choosers = ['LOGIN', 'CRACK', 'DECRYPT', 'COMPARE', 'CONFIG', 'CONTROL'];
+    const choosers = ['LOGIN', 'CRACK', 'DECRYPT', 'COMPARE', 'EDIT', 'CONFIG', 'CONTROL'];
     if (choosers.includes(cmd)) { this.openChooser(cmd, target); return; }
     this.overlay = null;
     this.withLoading(cmd, () => this.finishCommand(cmd, target));
@@ -474,9 +480,9 @@ export class App {
     const mods = perksFor(this.profile);
     const res = finish(ctx, endingId, { repReward: node?.repReward || 0, creditMult: mods.creditMult, repMult: mods.repMult });
     if (first) {
-      addAll(this.profile, MISSION_ITEMS[mission.id]);
-      res.items = MISSION_ITEMS[mission.id] || {};
-      res.notes = missionBond(this.profile, mission.id);
+      addAll(this.profile, missionItems(mission.id));
+      res.items = missionItems(mission.id) || {};
+      res.notes = missionBond(this.profile, mission.id, node?.giver);
     }
     this.persist();
     this.overlay = { kind: 'result', res };
@@ -789,7 +795,7 @@ export class App {
         h('button', { class: 'dlg-opt hot', onclick: (e) => { e.stopPropagation(); this.dlgDecide(true); } }, d.offer.accept),
         h('button', { class: 'dlg-opt dim', onclick: (e) => { e.stopPropagation(); this.dlgDecide(false); } }, d.offer.decline));
     } else if (d.mode === 'gift') {
-      const have = Object.keys(ITEMS).filter((id) => countOf(this.profile, id) > 0);
+      const have = Object.keys(ITEMS).filter((id) => countOf(this.profile, id) > 0 && !isKey(id));
       menu = h('div', { class: 'dlg-menu on' },
         h('div', { class: 'dlg-offer' }, h('b', {}, 'Pilih hadiah'), h('span', {}, t('favorit: {1}', ITEMS[npc.likes].name))),
         ...(have.length ? have : []).map((id) => h('button', { class: 'dlg-opt', onclick: (e) => { e.stopPropagation(); this.dlgGift(id); } },
@@ -1167,7 +1173,7 @@ export class App {
     if (!bag.length) out.push(h('div', { class: 'empty' }, 'Tas kosong.\nBeli barang di Pasar Gelap atau dapatkan dari misi dan kontrak.'));
     for (const id of bag) {
       out.push(h('div', { class: 'market-row' }, h('div', { class: 'main' }, h('b', {}, `${ITEMS[id].name} ×${countOf(this.profile, id)}`), h('small', {}, ITEMS[id].desc)),
-        ITEMS[id].usable && h('button', { class: 'buy', onclick: () => this.useKopi() }, 'PAKAI')));
+        ITEMS[id].usable && h('button', { class: 'buy', onclick: () => this.useItem(id) }, 'PAKAI')));
     }
     return out;
   }
