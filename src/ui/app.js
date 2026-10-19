@@ -13,7 +13,7 @@ import { PLACEHOLDER, portraitSrc } from './portraits.js';
 import { MARKET, buy, canBuy, owned, priceFor } from '../game/market.js';
 import { ITEMS, KOPI_FOCUS, KOPI_PRICE, MISSION_ITEMS, addItem, addAll, removeItem, countOf, contractDrop } from '../game/items.js';
 import { NPCS, LEVEL_NAMES, AFF_STEPS, npcById, npcState, npcLevel, levelOf, levelProgress, isVisible, npcSpot, canTalk, canGift, talk, gift, missionBond } from '../game/npc.js';
-import { eventFor, focusCostFor, restoreFocus, loadingMult, spendFocus, sleep, focusState, FOCUS_LABEL, seasonName } from '../game/time.js';
+import { eventFor, focusCostFor, restoreFocus, loadingMult, spendFocus, sleep, sleepPlan, fmtGameTime, focusState, FOCUS_LABEL, seasonName } from '../game/time.js';
 import { perksFor } from '../game/perks.js';
 import { canContract, startContract, hasContract, pendingDays, payout, collect } from '../game/retainer.js';
 import { rankFor, nextRank, rankProgress } from '../game/progression.js';
@@ -40,6 +40,7 @@ const NOT_CONNECTED = {
   DISCONNECT: 'Kamu belum terhubung ke node mana pun.'
 };
 const notConnected = (cmd) => NOT_CONNECTED[cmd] || NOT_CONNECTED.DEFAULT;
+const fmtSec = (ms) => `${(ms / 1000).toFixed(1).replace('.', ',')} dtk`;
 const NODE_PAGES = ['files', 'system', 'control'];
 const TABS = [['map', 'Peta'], ['terminal', 'Terminal'], ['goals', 'Goals'], ['market', 'Pasar'], ['profile', 'Profil']];
 
@@ -129,7 +130,7 @@ export class App {
 
   // Android back button / Escape: unwind one level. Returns false when there is nothing left to close.
   back() {
-    if (this.busy) return true;
+    if (this.busy) { this.cancelBusy(); return true; }
     if (this.overlay) { this.overlay = null; this.render(); return true; }
     if (this.dlg) {
       if (['gift', 'offers', 'turnlist', 'ending'].includes(this.dlg.mode)) this.dlgHub();
@@ -160,18 +161,65 @@ export class App {
   }
 
   // ---------- loading ----------
-  // Every command runs behind a full-screen loading; Overclock upgrades shorten it.
-  // Spends Fokus (never blocks) and slows down when tired. `opts` can override
-  // the cost / duration (used by sleeping).
+  // Every command runs behind a full-screen loading. It shows how long it will
+  // take (base × fatigue), counts down, and can be cancelled — Fokus is only
+  // spent when it finishes, so a cancelled command costs nothing. Overclock
+  // upgrades shorten the base time.
+  //   opts.cost   fixed Fokus cost        opts.base  fixed base duration (still scaled by fatigue)
+  //   opts.ms     fixed total duration    opts.sleep sleep plan (shows time of night)
+  //   opts.onCancel(progress 0..1)        opts.cancelLabel
   withLoading(label, fn, opts = {}) {
     if (this.busy) return;
     const mods = perksFor(this.profile);
-    const cost = opts.cost ?? focusCostFor(this.profile, label, mods);
-    const ms = opts.ms ?? Math.round(loadMs(this.profile) * loadingMult(this.profile, mods));
-    spendFocus(this.profile, cost);
-    this.busy = { label, ms };
+    const mult = opts.ms ? 1 : loadingMult(this.profile, mods);
+    const base = opts.ms ?? opts.base ?? loadMs(this.profile);
+    const ms = Math.round(base * mult);
+    this.busy = {
+      label, ms, base, mult, start: Date.now(), focus: this.profile.focus,
+      state: focusState(this.profile.focus), sleep: opts.sleep || null, cancelLabel: opts.cancelLabel || 'BATAL',
+      cost: opts.cost ?? focusCostFor(this.profile, label, mods), onCancel: opts.onCancel || null
+    };
     this.render();
-    setTimeout(() => { this.busy = null; fn(); }, ms);
+    this._busyT = setTimeout(() => {
+      const b = this.busy;
+      this.clearBusy();
+      spendFocus(this.profile, b.cost);
+      fn();
+    }, ms);
+    this._busyTick = setInterval(() => this.tickBusy(), 100);
+  }
+
+  clearBusy() {
+    clearTimeout(this._busyT); clearInterval(this._busyTick);
+    this._busyT = this._busyTick = null;
+    this.busy = null;
+  }
+
+  cancelBusy() {
+    const b = this.busy;
+    if (!b) return;
+    const progress = Math.min(1, (Date.now() - b.start) / b.ms);
+    this.clearBusy();
+    if (b.onCancel) b.onCancel(progress);
+    else this.toast('Perintah dibatalkan.', 'back');
+    this.render();
+  }
+
+  tickBusy() {
+    const b = this.busy;
+    if (!b) return;
+    const left = Math.max(0, b.ms - (Date.now() - b.start));
+    const t = this.root.querySelector('.loading-left');
+    if (t) t.textContent = b.sleep ? fmtGameTime(Math.ceil((left / b.ms) * b.sleep.gameMin)) + ' lagi' : `sisa ${fmtSec(left)}`;
+    const f = this.root.querySelector('.loading-focus');
+    if (f && b.sleep) f.textContent = `⚡ ${b.focus + Math.floor((1 - left / b.ms) * b.sleep.missing)}`;
+  }
+
+  // A command that found nothing to act on still takes its time and some Fokus
+  // before it tells you so.
+  failAttempt(cmd, message) {
+    this.overlay = null;
+    this.withLoading(cmd, () => { this.persist(); this.render(); this.toast(message); });
   }
 
   supplyRows() {
@@ -264,12 +312,23 @@ export class App {
 
   goSleep() {
     this.overlay = null;
+    const mods = perksFor(this.profile);
+    const plan = sleepPlan(this.profile, mods.focusMax);
     this.withLoading('TIDUR', () => {
-      const info = sleep(this.profile, perksFor(this.profile).focusMax);
+      const info = sleep(this.profile, mods.focusMax);
       this.persist();
-      this.overlay = { kind: 'daystart', info };
+      this.overlay = { kind: 'daystart', info: { ...info, slept: plan.gameMin } };
       this.render();
-    }, { cost: 0, ms: 1500 });
+    }, {
+      cost: 0, ms: plan.ms, sleep: plan, cancelLabel: 'BANGUN',
+      // waking up early: you keep the rest you already got, but the day does not change
+      onCancel: (progress) => {
+        const got = Math.floor(progress * plan.missing);
+        restoreFocus(this.profile, got, mods.focusMax);
+        this.persist();
+        this.toast(got ? `Kamu bangun lebih awal. Fokus +${got}.` : 'Kamu batal tidur.', 'hint');
+      }
+    });
   }
 
   // Opening the file server on a contracted site's entry node is the daily chore.
@@ -363,17 +422,17 @@ export class App {
     if (k === 'soon') { this.toast(`${cmd}: segera hadir di update berikutnya.`); return; }
     if (k === 'map') { this.overlay = null; this.view = 'map'; this.render(); return; }
     if (k === 'scan') { this.overlay = null; this.runCommand('SCAN', this.cur ? { type: 'device', id: this.cur } : { type: 'rig' }); return; }
-    if (k === 'disconnect') { if (!this.cur) return this.toast(notConnected('DISCONNECT')); this.overlay = null; this.runCommand('DISCONNECT', { type: 'rig' }); return; }
-    if (k === 'files') { if (!this.cur) return this.toast(notConnected('FILES')); this.overlay = null; this.openPage('files', 'LS'); return; }
-    if (k === 'system') { if (!this.cur) return this.toast(notConnected('SERVICES')); this.overlay = null; this.openPage('system', 'PS'); return; }
-    if (k === 'controlpage') { if (!this.cur) return this.toast(notConnected('CONTROL')); this.overlay = null; this.openPage('control', 'CONTROL'); return; }
+    if (k === 'disconnect') { if (!this.cur) return this.failAttempt(cmd, notConnected('DISCONNECT')); this.overlay = null; this.runCommand('DISCONNECT', { type: 'rig' }); return; }
+    if (k === 'files') { if (!this.cur) return this.failAttempt('LS', notConnected('FILES')); this.overlay = null; this.openPage('files', 'LS'); return; }
+    if (k === 'system') { if (!this.cur) return this.failAttempt('PS', notConnected('SERVICES')); this.overlay = null; this.openPage('system', 'PS'); return; }
+    if (k === 'controlpage') { if (!this.cur) return this.failAttempt('CONTROL', notConnected('CONTROL')); this.overlay = null; this.openPage('control', 'CONTROL'); return; }
     if (k === 'search') {
-      if (!this.cur) return this.toast(notConnected('SEARCH'));
+      if (!this.cur) return this.failAttempt('SEARCH', notConnected('SEARCH'));
       this.overlay = null; this.view = 'terminal'; this.runCommand('SEARCH', { type: 'device', id: this.cur }); return;
     }
     // target-based: device / connect / file / proc / control
     const targets = commandTargets(this.ctx, cmd);
-    if (!targets.length) { this.toast(cmd === 'CONNECT' || this.cur ? (NO_TARGET[cmd] || 'Tidak ada yang bisa dilakukan di sini.') : notConnected(cmd)); return; }
+    if (!targets.length) { this.failAttempt(cmd, cmd === 'CONNECT' || this.cur ? (NO_TARGET[cmd] || 'Tidak ada yang bisa dilakukan di sini.') : notConnected(cmd)); return; }
     if (targets.length === 1 && targets[0].enabled) { this.runFromCatalog(cmd, targets[0].target); return; }
     this.overlay = { kind: 'param', cmd, targets };
     this.render();
@@ -454,11 +513,25 @@ export class App {
 
   vLoading() {
     const h = this.h.bind(this);
+    const b = this.busy;
+    const left = Math.max(0, b.ms - (Date.now() - b.start));
+    const rows = [];
+    if (b.sleep) {
+      rows.push(h('div', { class: 'loading-focus' }, `⚡ ${b.focus}`),
+        h('small', { class: 'loading-left' }, fmtGameTime(Math.ceil((left / b.ms) * b.sleep.gameMin)) + ' lagi'),
+        h('small', {}, `Tidur ${fmtGameTime(b.sleep.gameMin)} (waktu game) · 3 mnt per 1 Fokus · ⚡${b.focus} → ${b.sleep.focusMax}`));
+    } else {
+      const note = b.mult > 1 ? `Estimasi ${fmtSec(b.ms)} = ${fmtSec(b.base)} × ${String(b.mult).replace('.', ',')} (${b.mult >= 2 ? 'Kelelahan' : 'Lelah'}, Fokus ${b.focus})` : `Estimasi ${fmtSec(b.ms)} (normal)`;
+      rows.push(h('small', { class: 'loading-left' }, `sisa ${fmtSec(left)}`),
+        h('small', {}, note),
+        b.cost > 0 && h('small', { class: 'loading-cost' }, `Biaya ⚡ −${b.cost} (setelah selesai)`));
+    }
     return h('div', { class: 'loading' },
       h('div', { class: 'loading-box' },
-        h('div', { class: 'loading-cmd' }, '> ', this.busy.label.toLowerCase(), h('span', { class: 'blink' }, '_')),
-        h('div', { class: 'loading-bar' }, h('i', { style: `animation-duration:${this.busy.ms}ms` })),
-        h('small', {}, 'memproses…')));
+        h('div', { class: 'loading-cmd' }, '> ', b.label.toLowerCase(), h('span', { class: 'blink' }, '_')),
+        h('div', { class: 'loading-bar' + (b.mult >= 2 ? ' slow' : '') }, h('i', { style: `animation-duration:${b.ms}ms;animation-delay:-${Date.now() - b.start}ms` })),
+        ...rows,
+        h('button', { class: 'loading-cancel', onclick: () => this.cancelBusy() }, b.cancelLabel)));
   }
 
   // ---------- dialogue (visual-novel style) ----------
@@ -514,7 +587,7 @@ export class App {
         this.dlg.key = (this._dk += 1);
         this.render();
       });
-    }, { cost: 2, ms: 500 });
+    }, { cost: 2, base: 500 });
   }
 
   dlgPick(option) {
@@ -546,7 +619,7 @@ export class App {
       this.persist();
       this.dlgPlay(giftLines(id, !!r?.liked), () => this.dlgHub());
       if (r?.notes.length) this.toast(r.notes.join(' · '), 'hint');
-    }, { cost: 1, ms: 400 });
+    }, { cost: 1, base: 400 });
   }
 
   dlgOffers() {
@@ -1285,7 +1358,7 @@ export class App {
     } else if (o.kind === 'daystart') {
       const i = o.info;
       sheet.append(h('h2', {}, `Hari ${i.day}`),
-        h('p', { style: 'color:var(--muted);font-size:13px;margin:4px 0 10px' }, `Musim ${i.season} · Fokus pulih penuh`),
+        h('p', { style: 'color:var(--muted);font-size:13px;margin:4px 0 10px' }, `Musim ${i.season} · Tidur ${fmtGameTime(i.slept)} · Fokus pulih penuh`),
         i.event && h('div', { class: 'event-chip' }, h('b', {}, i.event.name), h('small', {}, i.event.desc)),
         ...this.dueNotes(),
         h('button', { class: 'act', onclick: close }, 'MULAI HARI'));

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { newProfile } from '../src/game/profile.js';
-import { focusState, focusCostFor, loadingMult, spendFocus, restoreFocus, sleep, eventFor, seasonName, EVENTS } from '../src/game/time.js';
+import { focusState, focusCostFor, loadingMult, fatigueMult, sleepPlan, fmtGameTime, spendFocus, restoreFocus, sleep, eventFor, seasonName, EVENTS } from '../src/game/time.js';
 
 describe('day & focus', () => {
   it('new profile starts day 1 with full focus', () => {
@@ -43,9 +43,34 @@ describe('day & focus', () => {
     expect(loadingMult(p)).toBe(1);
     p.focus = 30;
     expect(loadingMult(p)).toBe(1.5);
-    p.focus = 5;
-    expect(loadingMult(p, { loading: 1.5 })).toBe(2.5 * 1.5);
+    p.focus = 10;
+    expect(loadingMult(p, { loading: 1.5 })).toBeCloseTo(4 * 1.5);
   });
+
+  it('below 20 every lost point makes it slower, and 0 is the slowest', () => {
+    let prev = fatigueMult(20);
+    for (let f = 19; f >= 0; f--) { const m = fatigueMult(f); expect(m).toBeGreaterThan(prev); prev = m; }
+    expect(fatigueMult(0)).toBe(6);
+    expect(fatigueMult(19)).toBeGreaterThan(fatigueMult(20));
+    expect(fatigueMult(60)).toBe(1);
+  });
+
+  it('sleep takes 3 game-minutes per missing point, at least an hour', () => {
+    const p = newProfile();
+    p.focus = 100;
+    expect(sleepPlan(p).gameMin).toBe(60);            // already rested: still an hour
+    p.focus = 20;
+    expect(sleepPlan(p).missing).toBe(80);
+    expect(sleepPlan(p).gameMin).toBe(240);           // 80 × 3
+    p.focus = 0;
+    const full = sleepPlan(p);
+    expect(full.gameMin).toBe(300);
+    expect(full.ms).toBeGreaterThan(sleepPlan({ focus: 50 }).ms);
+    expect(fmtGameTime(198)).toBe('3 jam 18 mnt');
+    expect(fmtGameTime(300)).toBe('5 jam');
+    expect(fmtGameTime(45)).toBe('45 mnt');
+  });
+
 
   it('restoreFocus caps at max; sleep resets focus and advances the day', () => {
     const p = newProfile();
