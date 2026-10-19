@@ -16,6 +16,11 @@ terhubung lewat hotspot dan backbone ISP. Peta menampilkan node yang sudah
 kamu temukan: `CONNECT` untuk masuk, `SCAN` untuk melihat tetangganya
 (CONNECT tidak otomatis men-scan). Misi dibangun di atas node-node kota itu.
 
+Rigmu masuk lewat **Inti ISP**. Di luar jaringan, CMDS → CONNECT hanya
+menawarkan Inti ISP; setelah terhubung, hanya **tetangga yang sudah kamu
+SCAN**. Misi diserahkan **langsung ke pemberinya** (dialog → "Serahkan
+tugas"), bukan dari menu Goals.
+
 **Misi diberikan NPC** lewat dialog ("Ada kerjaan?"). Menerima misi
 memunculkan node awalnya di peta. Kedekatan dengan NPC membuka misi
 berikutnya dan keuntungan (diskon, hint murah, Fokus, dll).

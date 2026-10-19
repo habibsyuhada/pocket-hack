@@ -73,8 +73,17 @@ export function commandTargets(ctx, cmd) {
   const cur = run.current;
 
   if (meta.kind === 'connect') {
-    for (const d of Object.values(run.devices)) {
-      if (!d.discovered || run.current === d.id) continue;
+    // Only nodes wired to where you are now. Off the network, only the rig's uplink.
+    const ids = new Set();
+    if (cur) {
+      for (const l of device(run, cur).links || []) ids.add(l);
+      for (const d of Object.values(run.devices)) if (d.links?.includes(cur)) ids.add(d.id);
+    } else {
+      for (const e of ctx.mission.rigScan || ctx.mission.entry || []) ids.add(e);
+    }
+    for (const id of ids) {
+      const d = run.devices[id];
+      if (!d?.discovered || cur === id) continue;
       const r = row({ type: 'device', id: d.id }, `${d.name} · ${d.addr}`);
       if (r) out.push(r);
     }

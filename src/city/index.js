@@ -4,7 +4,7 @@
 // and links it together. The engine treats the result as a single big "mission".
 import { SITES } from '../sites/index.js';
 import { dressWorld } from '../sites/flavor.js';
-import { GENERIC_NODES, EXTRA_NODES, EDGES, HUBS } from './nodes.js';
+import { GENERIC_NODES, EXTRA_NODES, EDGES } from './nodes.js';
 import { placeOf, DISTRICTS } from './layout.js';
 
 const clone = (o) => structuredClone(o);
@@ -64,7 +64,6 @@ function buildCity() {
     d.x = pos.x; d.y = pos.y; d.district = pos.district;
   }
 
-  const missionEntries = SITES.flatMap((m) => m.entry);
   return {
     id: 'city',
     code: 'KOTA',
@@ -73,15 +72,15 @@ function buildCity() {
     world: { devices },
     owner,
     creds, clues, diffs,
-    rigScan: HUBS,                                   // what a street-level scan picks up
-    entry: [...new Set([...HUBS, ...missionEntries])] // reachable without a link
+    rigScan: ['isp_core'],                           // the only thing your rig sees on its own
+    entry: ['isp_core'],                             // everything else is reached through links
   };
 }
 
 export const CITY = buildCity();
 export { DISTRICTS };
 // bump when city content changes so saved runs are rebuilt (progress is carried over)
-export const CITY_VERSION = 1;
-export const START_NODES = ['tengah_hub'];           // known from day one
+export const CITY_VERSION = 2;
+export const START_NODES = ['isp_core'];             // your rig's uplink, known from day one
 
 export const missionOfNode = (id) => CITY.owner[id] || null;

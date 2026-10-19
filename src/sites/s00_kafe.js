@@ -62,7 +62,7 @@ export default {
     { id: 'lcd', text: '(Bonus) Kembalikan layar printer ke SIAP', done: (r) => r.flags.includes('lcd_fixed'), bonus: true }
   ],
   hints: [
-    { when: (r) => !r.devices.router.discovered, text: 'Router Kafe ada di dekat Alun-Alun. Pindai dari Hotspot Alun-Alun.' },
+    { when: (r) => !r.devices.router.discovered, text: 'Mulai dari Inti ISP: CONNECT, SCAN, lalu ke Hotspot Alun-Alun. Router Kafe ada di sana.' },
     { when: (r) => r.current !== 'router' && r.devices.router.access === 'none', text: 'CONNECT ke Router Kafe. Akses tamunya terbuka.' },
     { when: (r) => !r.read.includes('wifi_info'), text: 'Buka tab FILE dan baca catatan staf di router.' },
     { when: (r) => !r.devices.printer.discovered, text: 'SCAN dari router untuk menemukan printer.' },

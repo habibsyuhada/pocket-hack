@@ -52,7 +52,7 @@ export const DIALOGUES = {
       s00: { lines: [N('Printer dapur macet sejak pagi. File menu baru tertahan di antrean dan laptop kasir rusak.', 'worried'),
                      N('Router kafe masih bisa dipakai tamu. Kamu bisa bantu ambil file menu dari printer?')],
              accept: 'Aku bantu, Bu.', decline: 'Nanti ya, Bu.',
-             onAccept: [N('Terima kasih! Router Kafe ada di dekat Alun-Alun. Cari dari sana.', 'happy')],
+             onAccept: [N('Terima kasih! Router Kafe ada di Alun-Alun. Mulai dari Inti ISP-mu, lalu cari jalan ke Hotspot Alun-Alun.', 'happy')],
              onDecline: [N('Tidak apa-apa. Tapi jangan lama-lama, menunya harus naik cetak.')] },
       s04: { lines: [N('Tetanggaku, Bu Tini, kasir warungnya macet. Laporan hari ini terkunci di dalam.', 'worried'),
                      N('Katanya ada catatan akun kasir di panel info halte. Bu Tini titip minta tolong.')],
@@ -60,6 +60,11 @@ export const DIALOGUES = {
              onAccept: [N('Syukurlah! Kasir Warung Tini ada di Alun-Alun. Hati-hati, jangan tinggalkan kerusakan.', 'happy')],
              onDecline: [N('Baik, tapi Bu Tini menunggu, ya.')] }
     },
+    turnIn: {
+      s00: [N('Menunya sudah ada? Coba kulihat...', 'happy'), N('Rapi sekali! Sekarang menu baru bisa kucetak. Terima kasih banyak ya.', 'happy')],
+      s04: [N('Bu Tini baru kabari: kasirnya normal lagi dan setoran malam ini aman.', 'happy'), N('Katanya kamu penyelamat. Aku bangga jadi perantaranya.')]
+    },
+    thanks: N('Terima kasih ya, Nak. Mampir lagi kapan saja.', 'happy'),
     noOffer: { locked: 'Aku belum cukup kenal kamu untuk titip yang itu. Sering-sering mampir dulu, ya.', none: 'Belum ada kerjaan lagi dariku. Kamu sudah bantu banyak.' },
     gift: {
       liked: [N('Kue lapis! Dari mana kamu tahu kesukaanku? Terima kasih banyak.', 'happy')],
@@ -116,6 +121,11 @@ export const DIALOGUES = {
              onAccept: [N('Server Studio Radio muncul di jaringan Pelabuhan. Kalau bisa, matikan juga pemancarnya.', 'happy')],
              onDecline: [N('Setiap malam ada korban baru. Tolong cepat.', 'worried')] }
     },
+    turnIn: {
+      s02: [N('Itu rekamannya? Bagus. Ini bukti yang kubutuhkan.', 'serious'), N('Akan kuterbitkan malam ini. Tanpa menyebut namamu.')],
+      s05: [N('Log siarannya lengkap. Dari sini penipunya bisa dilacak.', 'serious'), N('Radio itu bisa siaran dengan tenang lagi.', 'happy')]
+    },
+    thanks: N('Kerja bagus. Aku berutang satu padamu.', 'happy'),
     noOffer: { locked: 'Aku belum cukup percaya untuk cerita yang itu. Kita ngobrol dulu, ya.', none: 'Belum ada liputan baru. Kamu sudah banyak membantu.' },
     gift: {
       liked: [N('Dokumen ini... bagus sekali. Terima kasih, ini sangat berguna.', 'happy')],
@@ -171,6 +181,11 @@ export const DIALOGUES = {
              onAccept: [N('Gateway Lab ada di jaringan Kampus Barat. Hati-hati, ini kerjaan besar.', 'serious')],
              onDecline: [N('Wajar. Kerjaan ini memang bukan main-main.')] }
     },
+    turnIn: {
+      s06: [N('Daftar nilainya sudah terbuka? Mantap!', 'happy'), N('Panitia pasti senang. Reuni angkatan 98 bakal seru.', 'happy')],
+      s01: [N('Blueprint Arsip 07... kamu benar-benar berhasil.', 'serious'), N('Si Arsitek pasti puas. Ini kerjaan besar.')]
+    },
+    thanks: N('Mantap, bro. Kabari kalau butuh suku cadang.', 'happy'),
     noOffer: { locked: 'Aku belum cukup yakin menitipkan yang itu. Main ke sini lagi ya, kita ngobrol.', none: 'Belum ada titipan baru. Kamu sudah selesaikan semua.' },
     gift: {
       liked: [N('Komponen ini langka! Kamu tahu aja kesukaanku. Makasih, bro.', 'happy')],
@@ -221,6 +236,10 @@ export const DIALOGUES = {
              onAccept: [N('Edge Bursa ada di jaringan Pasar Selatan. Kunci brankasnya ada di dua tempat. Teliti.', 'serious')],
              onDecline: [N('Kolektif tidak akan menunggu selamanya.')] }
     },
+    turnIn: {
+      s03: [N('Buku besar aslinya...', 'serious'), N('Kolektif akan senang. Angka 640 itu akan membangunkan banyak orang.')]
+    },
+    thanks: N('Hm. Urusan kita beres, Nak.', 'happy'),
     noOffer: { locked: 'Barang yang itu belum kuberikan ke sembarang orang. Kita ngobrol dulu.', none: 'Hari ini tidak ada titipan. Lain kali.' },
     gift: {
       liked: [N('Hmm! Barang ini langka. Kamu paham selera lama. Terima kasih.', 'happy')],
@@ -244,6 +263,8 @@ export function talkSceneFor(npcId, level, day, aff = 0) {
 }
 
 export const offerSceneFor = (npcId, missionId) => DIALOGUES[npcId].offers[missionId] || null;
+export const turnInSceneFor = (npcId, missionId) => DIALOGUES[npcId].turnIn?.[missionId] || [{ who: 'npc', text: 'Sudah selesai? Coba kulihat hasilnya.', mood: 'normal' }];
+export const thanksLine = (npcId) => DIALOGUES[npcId].thanks;
 export const noOfferLine = (npcId, kind) => DIALOGUES[npcId].noOffer[kind];
 export const giftLines = (npcId, liked) => DIALOGUES[npcId].gift[liked ? 'liked' : 'other'];
 export { BANDS };

@@ -36,14 +36,20 @@ describe('city graph', () => {
     expect([...ids].filter((i) => !seen.has(i))).toEqual([]);
   });
 
-  it('hotspots are guest-open and a rig scan only sees hotspots', () => {
-    expect(CITY.rigScan.length).toBe(5);
-    for (const h of CITY.rigScan) expect(devices[h].open).toBe('guest');
-    for (const s of START_NODES) expect(devices[s]).toBeTruthy();
+  it('the rig only sees the ISP uplink; every hotspot hangs off it', () => {
+    expect(CITY.entry).toEqual(['isp_core']);
+    expect(CITY.rigScan).toEqual(['isp_core']);
+    expect(START_NODES).toEqual(['isp_core']);
+    expect(devices.isp_core.open).toBe('guest');
+    const hubs = ids.filter((i) => devices[i].hub);
+    expect(hubs.length).toBe(5);
+    for (const h of hubs) { expect(devices[h].open).toBe('guest'); expect(devices.isp_core.links).toContain(h); }
   });
 
-  it('every mission start node exists and is reachable', () => {
-    for (const m of SITES) for (const e of m.entry) expect(CITY.entry).toContain(e);
+  it('every mission start node is reachable from the ISP uplink', () => {
+    const seen = new Set(CITY.entry), queue = [...seen];
+    while (queue.length) for (const l of devices[queue.pop()].links || []) if (!seen.has(l)) { seen.add(l); queue.push(l); }
+    for (const m of SITES) for (const e of m.entry) expect(seen.has(e), `${m.id} start ${e}`).toBe(true);
   });
 
   it('file ids, process ids and control ids are globally unique', () => {

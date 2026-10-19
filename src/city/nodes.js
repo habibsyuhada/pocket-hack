@@ -32,10 +32,10 @@ export const GENERIC_NODES = [
   },
   {
     id: 'isp_core', name: 'Inti ISP Lokal', kind: 'Server', addr: '10.255.0.1', online: true, open: 'guest',
-    inspect: 'Router inti penyedia internet lokal.\nMenghubungkan hotspot Alun-Alun dengan Pasar Selatan.\nHanya melihat lalu lintas tamu — tidak ada yang rahasia di sini.',
+    inspect: 'Router inti penyedia internet lokal — pintu masuk rigmu ke jaringan kota.\nDari sini kamu bisa SCAN untuk menemukan hotspot tiap distrik.',
     files: [
       { id: 'isp_peta', name: 'peta_backbone.txt', minAccess: 'guest',
-        content: 'BACKBONE KOTA\n\nAlun-Alun ── Terminal Utara\nAlun-Alun ── Kampus Barat\nAlun-Alun ── Pelabuhan Timur\nAlun-Alun ── [INTI ISP] ── Pasar Selatan' }
+        content: 'BACKBONE KOTA\n\n            ┌─ Terminal Utara\n[INTI ISP] ──┼─ Alun-Alun ── (Utara, Barat, Timur)\n            ├─ Kampus Barat\n            ├─ Pelabuhan Timur\n            └─ Pasar Selatan\n\nMulai dari sini: SCAN lalu CONNECT ke hotspot distrik.' }
     ]
   },
 
@@ -115,9 +115,10 @@ export const GENERIC_NODES = [
 // Undirected links between generic nodes and into mission entry nodes.
 // (Mission-internal links stay as authored, so puzzles can't be bypassed.)
 export const EDGES = [
-  // backbone
+  // backbone: your rig dials into the ISP core, which feeds every district hotspot
+  ['isp_core', 'tengah_hub'], ['isp_core', 'utara_hub'], ['isp_core', 'barat_hub'], ['isp_core', 'timur_hub'], ['isp_core', 'selatan_hub'],
+  // shortcuts between neighbouring districts
   ['tengah_hub', 'utara_hub'], ['tengah_hub', 'barat_hub'], ['tengah_hub', 'timur_hub'],
-  ['tengah_hub', 'isp_core'], ['isp_core', 'selatan_hub'],
   // Tengah
   ['tengah_hub', 'router'], ['tengah_hub', 'warung_pos'], ['tengah_hub', 'halte_info'], ['tengah_hub', 'kios_tiket'],
   ['halte_info', 'kios_tiket'],
