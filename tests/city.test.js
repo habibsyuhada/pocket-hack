@@ -52,7 +52,7 @@ describe('city graph', () => {
 
   it('every mission start node is reachable from the ISP uplink', () => {
     const seen = new Set(CITY.entry), queue = [...seen];
-    while (queue.length) for (const l of devices[queue.pop()].links || []) if (!seen.has(l)) { seen.add(l); queue.push(l); }
+    while (queue.length) { const d = devices[queue.pop()]; for (const l of [...(d.links || []), ...(d.routes || [])]) if (!seen.has(l)) { seen.add(l); queue.push(l); } }
     for (const m of SITES) for (const e of m.entry) expect(seen.has(e), `${m.id} start ${e}`).toBe(true);
   });
 

@@ -11,7 +11,7 @@ export default {
   id: 's20',
   code: 'I-20',
   title: 'Gudang Pendingin',
-  client: 'Mbah Gun',
+  client: 'Mbah Gun, mewakili pedagang Pasar Selatan',
   reward: 640,
   brief:
     'Gudang pendingin kawasan pabrik menyimpan ikan, sayur, dan obat milik separuh pasar. Sensornya membaca suhu palsu dan kompresornya padam. ' +

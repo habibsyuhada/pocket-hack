@@ -62,7 +62,7 @@ describe('missions come from NPCs', () => {
   it('a new player is offered only the first Laras mission', () => {
     const p = newProfile();
     expect(offersFrom(p, 'laras').map((m) => m.id)).toEqual(['s00']);
-    expect(waitingOn(p, 'laras').map((m) => m.id)).toEqual(['s04']);
+    expect(waitingOn(p, 'laras').map((m) => m.id)).toEqual(['s04', 's07']);
     expect(offersFrom(p, 'rani')).toEqual([]); // Rani not met yet (needs reputation)
   });
 
