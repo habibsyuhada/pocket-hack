@@ -10,45 +10,64 @@ gameplay mengikuti desain **GHOSTLINK**: investigasi dan kontrol sistem,
 
 ## Dunia
 
-Kamu operator di kota **Surabaya**. Jelajahi peta, ambil job, retas target,
-kumpulkan kredit & reputasi, naikkan rank (Script Kiddie → NULLBYTE), dan
-belanja tool/upgrade di pasar gelap. Progres tersimpan antar sesi.
+Kamu operator di kota **Surabaya**. Kota adalah **satu jaringan besar**
+(30+ node di 5 distrik: Utara, Barat, Tengah, Timur, Selatan) yang saling
+terhubung lewat hotspot dan backbone ISP. Peta menampilkan node yang sudah
+kamu temukan: `CONNECT` untuk masuk, `SCAN` untuk melihat tetangganya
+(CONNECT tidak otomatis men-scan). Misi dibangun di atas node-node kota itu.
 
-## Bottom bar 3-konteks
+**Misi diberikan NPC** lewat dialog ("Ada kerjaan?"). Menerima misi
+memunculkan node awalnya di peta. Kedekatan dengan NPC membuka misi
+berikutnya dan keuntungan (diskon, hint murah, Fokus, dll).
 
-Navigasi utama ada di bottom bar yang **berubah sesuai tempatmu**:
+## Hari, Fokus, dan kontrak
 
-- **DUNIA** (menjelajah): 🗺️ Peta · 📡 Job · ▲ JACK IN · 🛒 Pasar · 👤 Profil
-- **JARINGAN** (sudah jack-in ke 1 target): 🌐 Node · 🧰 Rig · ▲ SCAN/CONNECT · 🎯 Misi · 📟 Log — `‹` di status bar = Jack Out
-- **PERANGKAT** (masuk 1 device): 📁 File · ⚙️ Sistem · ▲ READ/DL · 📟 Log · ⏏ Keluar — `‹` di status bar = Disconnect
+- **Hari & Fokus:** tiap perintah memakai Fokus; makin lelah, aksi makin
+  mahal dan loading makin lama (tidak pernah memblokir). Tidur di **Safehouse**
+  memulai hari baru. Event mingguan: Lomba, Hari Pasar, Pemadaman.
+- **Kontrak perawatan:** setelah misi selesai, klien menawarkan tugas harian
+  (buka File Server di node awalnya) untuk kredit rutin.
+- Semua perintah berjalan di balik **loading layar penuh**; Overclock di
+  Pasar mempercepatnya. Hint berbayar kredit.
 
-Tombol **Aksi tengah (FAB)** menjalankan perintah utama objek yang disorot.
-**Tap objek** (node/file/proses/kontrol, atau kartu perangkat di scene device)
-membuka sheet berisi semua perintah + alasan kalau terkunci.
+## Navigasi
 
-## Command
+Bottom bar: **Peta · Terminal · Goals · Pasar · Profil**. Terminal punya
+tombol **CMDS** (grup Eksplorasi, Akses, Server, Automation). Command
+**Server** (`FILES`, `SERVICES`, `CONTROL`) membuka halaman File / Service /
+Control node yang terhubung; `READ`, `DOWNLOAD`, `DECRYPT`, `STOP`, `START`,
+`CONFIG`, dll. dipakai dengan mengetuk file/proses di halaman itu.
 
-- **Jaringan:** `SCAN`, `INSPECT`, `CONNECT`, `DISCONNECT`
-- **Akses:** `LOGIN`, `CRACK`, `EXPLOIT`, `ELEVATE`
-- **File:** `READ`, `DOWNLOAD`, `RECOVER`, `DECRYPT`, `COMPARE`
-- **Sistem:** `START`, `STOP`, `CONFIG`, `RESTORE`, `CONTROL`
-- Tool aktif dibatasi **RAM** (bukan energi per-tindakan).
+## Dialog (gaya visual novel)
 
-## Target (v1)
+Dialog memakai slot **gambar standing** NPC, kotak teks dengan efek ketik, ketuk
+untuk lanjut, dan pilihan yang menambah kedekatan. Teks ada di
+`src/game/dialogues.js` (terpisah dari logika). Gambar NPC belum ada — dipakai
+siluet placeholder. Untuk memasangnya: taruh PNG transparan (pose berdiri,
+sekitar 800×1400) di `public/portraits/` lalu isi nama file di
+`src/ui/portraits.js` (mood: `normal`, `happy`, `worried`, `serious`).
 
-| Kode | Judul          | Mengajarkan |
-|------|----------------|-------------|
-| K-00 | Antrean Cetak  | scan → connect → read → login → stop proses → download |
-| C-02 | Mata Parkir    | exploit + control (matikan kamera) |
-| A-07 | Blueprint Asli | dua jalur (perbaiki server **atau** pulihkan backup) + COMPARE |
-| V-03 | Brankas Dingin | crack + decrypt + COMPARE (bukti angka dipalsukan) |
+## Target
+
+| Kode | Judul | Pemberi | Mengajarkan |
+|------|-------|---------|-------------|
+| K-00 | Antrean Cetak | Bu Laras | scan → connect → read → login → stop proses → download |
+| B-04 | Kasir Ngadat | Bu Laras (lv.1) | petunjuk akun di node lain + stop proses |
+| C-02 | Mata Parkir | Rani | exploit + control (matikan kamera) |
+| R-05 | Siaran Gelap | Rani (lv.2) | crack sandi studio + bukti + matikan pemancar |
+| T-06 | Arsip Sekolah | Dimas | petunjuk kunci di node lain + decrypt |
+| A-07 | Blueprint Asli | Dimas (lv.1) | dua jalur (perbaiki server **atau** pulihkan backup) + COMPARE |
+| V-03 | Brankas Dingin | Mbah Gun | crack + decrypt + COMPARE |
+
+Data kota ada di `src/city/` (node, tata letak peta, builder graf); misi di
+`src/sites/` (bisa menempelkan file ke node kota lewat `patches`).
 
 ## Menjalankan
 
 ```bash
 npm install
 npm run dev        # http://localhost:3000
-npm test           # vitest (20 test)
+npm test           # vitest
 npm run build      # -> dist/
 ```
 
