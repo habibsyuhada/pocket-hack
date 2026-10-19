@@ -1015,12 +1015,20 @@ export class App {
         h('button', { class: 'zoom-btn small', title: 'Legenda', onclick: () => { this.overlay = { kind: 'legend' }; this.render(); } }, '?'),
         h('button', { class: 'zoom-btn', onclick: () => this.zoomBy(1.25) }, '+'),
         h('button', { class: 'zoom-btn', onclick: () => this.zoomBy(0.8) }, '−')),
-      h('div', { class: 'map-tag' }, `◉ ${CITY_INFO.name} · ${fmtDateShort(this.profile.day)} · ${seasonName(this.profile.day)}`,
-        perksFor(this.profile).event && h('b', { class: 'ev' }, `★ ${perksFor(this.profile).event.name}`)));
+      perksFor(this.profile).event && h('div', { class: 'map-tag' }, h('b', { class: 'ev' }, `★ ${perksFor(this.profile).event.name}`)));
     return [vp];
   }
 
   applyMapT(inner) {
+    if (inner && this.mapView) {
+      // keep the viewport centre inside the map so the camera can't drift into the void
+      const vp = inner.parentElement, v = this.mapView;
+      if (vp && vp.clientWidth) {
+        const w = vp.clientWidth, hh = vp.clientHeight;
+        v.x = Math.max(w / 2 - MAPW * v.scale, Math.min(w / 2, v.x));
+        v.y = Math.max(hh / 2 - MAPH * v.scale, Math.min(hh / 2, v.y));
+      }
+    }
     if (inner && this.mapView) inner.style.transform = `translate(${this.mapView.x}px,${this.mapView.y}px) scale(${this.mapView.scale})`;
   }
 

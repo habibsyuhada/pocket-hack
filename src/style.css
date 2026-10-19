@@ -482,10 +482,10 @@ button:active:not(:disabled):not(.node):not(.site-pin) { transform: scale(0.97);
 .node { width: 118px; }
 .node .nm { font-size: 12px; }
 /* devices: neutral card, state tells where you are */
-.node.dev { border-color: #24352d; background: linear-gradient(180deg, #101c17, #0a130f); }
-.node.dev .nm .ic-svg { color: #7f968b; }
-.node.dev .ad { color: #6f857a; }
-.node.dev.far { opacity: 0.6; }
+.node.dev { border-color: #4c6a5c; background: linear-gradient(180deg, #1a2c24, #12201a); }
+.node.dev .nm .ic-svg { color: #b4cbc0; }
+.node.dev .ad { color: #9bb3a7; }
+.node.dev.far { opacity: 1; }
 .node.dev.near { opacity: 1; border: 1.5px dashed var(--cyan); }
 .node.dev.near .nm .ic-svg { color: var(--cyan); }
 .node.dev.cur { opacity: 1; border: 2px solid var(--green); background: linear-gradient(180deg, #123226, #0b1a13);
