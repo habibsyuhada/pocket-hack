@@ -172,7 +172,7 @@ export function exec(ctx, cmd, target, arg) {
   switch (cmd) {
     case 'SCAN': {
       const from = target.type === 'rig' ? null : d;
-      const ids = from ? from.links || [] : mission.entry;
+      const ids = from ? from.links || [] : mission.rigScan || mission.entry;
       const found = ids.map((id) => device(run, id));
       if (!found.length) out.push({ t: 'out', text: 'Tidak ada perangkat lain yang terlihat dari sini.' });
       for (const x of found) {

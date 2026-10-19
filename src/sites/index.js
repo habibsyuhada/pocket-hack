@@ -2,9 +2,12 @@ import s00 from './s00_kafe.js';
 import s01 from './s01_blueprint.js';
 import s02 from './s02_cctv.js';
 import s03 from './s03_vault.js';
+import s04 from './s04_warung.js';
+import s05 from './s05_radio.js';
+import s06 from './s06_sekolah.js';
 import { dressWorld } from './flavor.js';
 
-export const SITES = [s00, s01, s02, s03];
+export const SITES = [s00, s01, s02, s03, s04, s05, s06];
 
 // Add shared set-dressing (extra files + background services) so every node
 // feels populated, not just its objective files.

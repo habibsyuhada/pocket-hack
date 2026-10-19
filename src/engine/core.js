@@ -29,7 +29,7 @@ export function newRun(mission) {
     creds: [],
     flags: [],
     read: [],
-    log: [{ t: 'sys', text: `Kontrak "${mission.title}" diterima. Terminal siap.` }],
+    log: [{ t: 'sys', text: mission.intro || `Kontrak "${mission.title}" diterima. Terminal siap.` }],
     ended: null
   };
 }
