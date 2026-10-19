@@ -47,6 +47,10 @@ berikutnya dan keuntungan (diskon, hint murah, Fokus, dll).
 - Kontrak penulisan misi baru: `docs/v1-spec.md`. Tiap misi di `src/sites/sNN_*.js` membawa `meta`, `edges`, `place`, `dialogue`, dan terjemahan di `src/i18n/extra/sNN.js`.
 - Belum di v1: paket Automation (TOOLS/RUN/QUEUE/SCRIPT), Heat, dan pencapaian.
 
+## Suara, musik, dan efek visual
+Semua suara dan musik **disintesis di kode** (WebAudio, tanpa berkas aset) di `src/fx/`: `audio.js` (mesin + limiter), `sfx.js` (58 SFX + suara dialog per NPC), `music.js` (musik ambient generatif per adegan), `vfx.js` + `fx.css` (partikel, ripple, teks melayang, shake/glitch), `haptics.js`, `index.js` (satu pintu `fx.*`). Pengaturan: Profil → Pengaturan (Suara, Musik, Getar, Efek visual Penuh/Hemat/Mati; mengikuti `prefers-reduced-motion`).
+Cek kualitas audio: `node tools/render-audio.mjs [dir]` merender semua suara secara offline (Chromium), memeriksa senyap/clipping/klik, dan menulis WAV untuk didengar.
+
 ## Navigasi
 
 Bottom bar: **Peta · Terminal · Goals · Profil**. **Pasar Gelap** (Selatan) dan **Biro Kontrak**

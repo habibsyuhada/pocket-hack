@@ -103,8 +103,8 @@ export const fx = {
     if (s.overlay && s.overlay !== p.overlay) { if (s.overlayKind !== 'result') { cue('sheetOpen'); haptic('select'); } }
     else if (!s.overlay && p.overlay) cue('sheetClose');
     if (s.dlg && !p.dlg) { cue('talk'); haptic('light'); }
-    if (s.busy && !p.busy) { stopLoad?.(); stopLoad = loop('load'); }
-    if (!s.busy && p.busy) { stopLoad?.(); stopLoad = null; }
+    if (s.busy && !p.busy) { stopLoad?.(); stopLoad = loop('load'); vfx.rain(true); }
+    if (!s.busy && p.busy) { stopLoad?.(); stopLoad = null; vfx.rain(false); }
     if (s.noticeId && s.noticeId !== p.noticeId) cue(TOAST[s.noticeIcon] || 'toastInfo');
     if (s.sleeping && !p.sleeping) { cue('sleepStart'); haptic('light'); }
     if (!s.sleeping && p.sleeping) { cue('wake'); haptic('success'); }
