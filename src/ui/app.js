@@ -547,7 +547,8 @@ export class App {
     const first = !this.profile.cleared[mission.id];
     const mods = perksFor(this.profile);
     const res = finish(ctx, endingId, { repReward: node?.repReward || 0, creditMult: mods.creditMult, repMult: mods.repMult });
-    if (first) {
+    const noItems = mission.endings.find((e) => e.id === endingId)?.noItems;
+    if (first && !noItems) {
       addAll(this.profile, missionItems(mission.id));
       res.items = missionItems(mission.id) || {};
       res.notes = missionBond(this.profile, mission.id, node?.giver);

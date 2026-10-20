@@ -22,11 +22,16 @@ import s20 from './s20_gudang.js';
 import s21 from './s21_plc.js';
 import { dressWorld } from './flavor.js';
 import { BRIEFS } from './briefs.js';
+import { applyRoutes, ROUTE_EN } from './routes.js';
+import { EN } from '../i18n/en.js';
 
 export const SITES = [s00, s01, s02, s03, s04, s05, s06, s07, s08, s09, s10, s11, s12, s13, s14, s15, s16, s17, s18, s19, s20, s21];
 
 // Add shared set-dressing (extra files + background services) so every node
 // feels populated, not just its objective files.
 for (const s of SITES) { dressWorld(s.world); if (BRIEFS[s.id]) s.brief = BRIEFS[s.id]; }
+
+applyRoutes(SITES);
+Object.assign(EN, ROUTE_EN);                      // English for the texts the routes added
 
 export const siteById = (id) => SITES.find((s) => s.id === id);

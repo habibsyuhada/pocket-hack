@@ -1,5 +1,5 @@
 import { t, tr } from '../i18n/index.js';
-import { enterNode, leaveNode, lockSeconds } from './trace.js';
+import { enterNode, leaveNode, lockSeconds, alarm } from './trace.js';
 import { hasCmd } from '../game/profile.js';
 import {
   LEVEL_LABEL, TOOLS, atLeast, applyEffects, configValid, device, findFile,
@@ -61,7 +61,8 @@ export function getActions(ctx, target) {
         out.push(A('CRACK', !needTool(profile, 'keyloom'), needTool(profile, 'keyloom'), true));
       }
       if (d.exploit && !atLeast(d.access, d.exploit.level)) {
-        out.push(A('EXPLOIT', true));
+        const unknown = (d.exploit.requires || []).some((c) => !run.clues.includes(c));
+        out.push(A('EXPLOIT', !unknown, 'Belum tahu celahnya. Cari informasi tentang sistem ini dulu.'));
       }
       if (d.elevate && d.access !== d.elevate.to) {
         const why = !atLeast(d.access, d.elevate.from) ? t('Butuh akses {1} dulu.', LEVEL_LABEL[d.elevate.from]) : '';
@@ -313,6 +314,8 @@ export function exec(ctx, cmd, target, arg) {
       d.access = d.exploit.level;
       out.push({ t: 'ok', text: tr(d.exploit.text) });
       out.push({ t: 'ok', text: t('Akses: {1}.', LEVEL_LABEL[d.access]) });
+      applyEffects(run, mission, d.exploit.onSuccess, out);
+      if (d.exploit.loud && alarm(run, d)) out.push({ t: 'warn', text: t('ALARM! {1} mencatat serangan. Waktumu di sini dipersingkat.', d.name) });
       break;
     case 'ELEVATE': {
       const need = d.elevate.requires || [];

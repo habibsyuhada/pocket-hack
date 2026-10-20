@@ -55,6 +55,16 @@ Cek kualitas audio: `node tools/render-audio.mjs [dir]` merender semua suara sec
 - **Trace:** node yang dijaga (misi dif 2 ke atas yang punya sandi, celah, atau kredensial) memberi waktu 130–210 detik. Waktu berjalan selama tersambung dan berhenti saat loading, dialog, dan tidur. Habis → ditendang, node menolak 30 detik. Putus lebih awal menyimpan sisa waktu, yang pulih 1 detik per detik saat pergi. Misi tutorial (dif 1) tidak punya Trace. Logika di `src/engine/trace.js`.
 - **Tidak diarahkan:** Goals hanya menampilkan tujuan utama dan bonus; langkah di antaranya muncul sebagai catatan setelah dikerjakan. Brief misi (`src/sites/briefs.js`) hanya menceritakan masalah, tanpa nama command, tool, atau harga.
 
+## Jalur alternatif
+Hampir tiap misi punya lebih dari satu jalan (definisi di `src/sites/routes.js`, tesnya di `tests/routes.test.js`):
+- **Senyap vs keras:** masuk lewat login dan petunjuk, atau `EXPLOIT` (butuh petunjuk tentang celahnya; memicu alarm yang memotong waktu Trace jadi 40%). Contoh: s02, s03, s09, s10, s14–s18.
+- **Sniffer:** tangkap kredensial langsung (s07, s12).
+- **Salinan lain:** file yang sama ada di tempat lain, kadang rusak sehingga perlu RECOVER (s00, s11).
+- **Hasil lebih kecil tapi lebih cepat:** jalan pintas dengan ending dan hadiah sendiri (s05, s08, s13).
+- **Bypass:** memaksa kondisi akhir lewat perangkat lain tanpa memperbaiki penyebabnya (s20, tanpa kunci gudang).
+- **Kunci cadangan / sumber info lain:** s06, s19.
+s01 dan s21 sudah punya jalur ganda sejak awal.
+
 ## Navigasi
 
 Bottom bar: **Peta · Terminal · Goals · Profil**. **Pasar Gelap** (Selatan) dan **Biro Kontrak**

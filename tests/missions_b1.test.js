@@ -91,8 +91,9 @@ describe('B-08 / s08 Printer Kelurahan', () => {
     must(ctx, 'RECOVER', file('s08_spool', 's08_draf'));
     must(ctx, 'DOWNLOAD', file('s08_spool', 's08_draf'));
     expect(ctx.run.local.find((f) => f.id === 's08_draf').content).toContain('Kamis');
-    expect(done(ctx, 's08')).toBe(false);
+    // the draft is a real but worse way out: its own, smaller ending, never the full one
     expect(avail(ctx, 's08', 'cetak')).toBe(false);
+    expect(avail(ctx, 's08', 'cetak_draf')).toBe(true);
   });
 
   it('the printer cannot be reached without passing the NAS', () => {
@@ -294,7 +295,7 @@ describe('Babak 1 mission data', () => {
     for (const [id, [giver, lvl, diff, reward, rep]] of Object.entries(t)) {
       const m = mission(id);
       expect([m.meta.giver, m.meta.minLevel, m.meta.difficulty, m.reward, m.meta.repReward]).toEqual([giver, lvl, diff, reward, rep]);
-      expect(m.endings.every((e) => e.reward === reward)).toBe(true);
+      expect(m.endings[0].reward).toBe(reward);                // the full ending; routes add smaller ones
       expect(m.objectives.filter((o) => o.main).length).toBe(1);
       expect(m.objectives.length).toBeGreaterThanOrEqual(3);
       expect(m.objectives.length).toBeLessThanOrEqual(5);

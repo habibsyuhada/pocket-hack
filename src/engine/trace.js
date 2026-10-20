@@ -56,3 +56,14 @@ export function tickTrace(run, dt, now = Date.now()) {
 
 // lines for the "why is CONNECT disabled" reason
 export const lockSeconds = (run, id, now = Date.now()) => Math.ceil(lockLeft(run, id, now) / 1000);
+
+// A loud break-in (EXPLOIT with `loud: true`) trips the node's alarm: the time you have left is cut.
+export const ALARM_FACTOR = 0.4;
+export function alarm(run, d) {
+  const budget = traceBudget(d);
+  if (!budget) return false;
+  const flag = `alarm_${d.id}`;
+  if (!run.flags.includes(flag)) run.flags.push(flag);
+  if (run.trace?.id === d.id) run.trace.left = Math.min(run.trace.left, budget * ALARM_FACTOR);
+  return true;
+}

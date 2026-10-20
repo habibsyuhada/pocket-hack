@@ -3,6 +3,8 @@ export default {
   en: {
     "Trace hampir selesai! Selesaikan urusanmu di {1} atau putus sebelum ditendang.": "The trace is almost done! Finish up at {1} or disconnect before you are kicked out.",
     "Terlacak! {1} menendangmu keluar. Tunggu {2} detik sebelum masuk lagi.": "Traced! {1} kicked you out. Wait {2} seconds before you can connect again.",
+    "Belum tahu celahnya. Cari informasi tentang sistem ini dulu.": "You do not know the flaw yet. Find information about this system first.",
+    "ALARM! {1} mencatat serangan. Waktumu di sini dipersingkat.": "ALARM! {1} logged the attack. Your time here is cut short.",
     "TRACE {1}": "TRACE {1}",
     "TERKUNCI · {1} dtk": "LOCKED · {1} s",
     "Cara mencapainya terserah kamu. Langkah yang sudah kamu lakukan tercatat di sini.": "How you get there is up to you. The steps you have taken are noted here.",
