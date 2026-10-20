@@ -14,6 +14,7 @@ import { PLACEHOLDER, portraitSrc } from './portraits.js';
 import { MARKET, buy, canBuy, owned, priceFor } from '../game/market.js';
 import { ITEMS, KOPI_FOCUS, isKey, missionItems, addItem, addAll, removeItem, countOf, contractDrop } from '../game/items.js';
 import { NPCS, LEVEL_NAMES, AFF_STEPS, npcById, npcState, npcLevel, levelOf, levelProgress, isVisible, npcSpot, canTalk, canGift, talkWait, giftWait, talk, gift, missionBond } from '../game/npc.js';
+import { tickTrace, lockLeft, WARN_MS, LOCKOUT_MS } from '../engine/trace.js';
 import { eventFor, focusCostFor, restoreFocus, loadingMult, spendFocus, startSleep, sleepPlan, sleepProgress, finishSleep, wakeEarly, fmtGameTime, fmtClock, fmtDate, fmtDateShort, dayIndex, syncDay, focusState, FOCUS_LABEL, seasonName } from '../game/time.js';
 import { perksFor } from '../game/perks.js';
 import { canContract, startContract, hasContract, pendingDays, payout, collect } from '../game/retainer.js';
@@ -97,6 +98,7 @@ export class App {
     this.render();
     // the date is the real one: notice midnight while the app stays open
     setInterval(() => this.checkDay(), 30000);
+    setInterval(() => this.tickTraceUi(), 500);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) this.checkDay(); });
   }
 
@@ -201,6 +203,69 @@ export class App {
   confirmBox(title, text, okLabel, onOk) {
     this.overlay = { kind: 'confirm', title, text, okLabel, onOk };
     this.render();
+  }
+
+  // ---------- trace timer ----------
+  // Secured nodes watch you. The clock runs while you are connected (paused behind loading screens,
+  // sleep and dialogues); when it hits zero you are thrown out and the node refuses you for 30 s.
+  tickTraceUi() {
+    const run = this.ctx?.run;
+    if (!run || this.intro) return;
+    const now = Date.now();
+    const dt = Math.min(1000, now - (this._traceAt || now));
+    this._traceAt = now;
+    this.updateLocks(run, now);
+    if (!run.trace) { this._traceWarned = null; return; }
+    if (!(this.busy || this.profile.sleeping || this.dlg)) {
+      const kick = tickTrace(run, dt, now);
+      if (kick) return this.onKicked(kick.id);
+    }
+    if (run.trace.left <= WARN_MS && this._traceWarned !== run.trace.id) {
+      this._traceWarned = run.trace.id;
+      this.toast(t('Trace hampir selesai! Selesaikan urusanmu di {1} atau putus sebelum ditendang.', device(run, run.trace.id).name), 'warn');
+      fx.fail();
+    }
+    this.refreshTraceChip(run);
+    if (now - (this._traceSaved || 0) > 5000) { this._traceSaved = now; this.persist(); }
+  }
+
+  onKicked(id) {
+    const run = this.ctx.run, d = device(run, id);
+    if (NODE_PAGES.includes(this.view)) this.view = 'terminal';
+    this.overlay = null;
+    this.persist();
+    fx.fail();
+    this.toast(t('Terlacak! {1} menendangmu keluar. Tunggu {2} detik sebelum masuk lagi.', d.name, LOCKOUT_MS / 1000), 'warn');
+    this.render();
+  }
+
+  refreshTraceChip(run) {
+    const left = run.trace?.left ?? 0;
+    for (const el of this.root.querySelectorAll('[data-trace]')) {
+      el.textContent = t('TRACE {1}', fmtClock(left));
+      el.className = 'trace-chip' + (left <= WARN_MS / 2 ? ' crit' : left <= WARN_MS * 2 ? ' warn' : '');
+    }
+  }
+
+  traceChip() {
+    const run = this.ctx?.run;
+    if (!run?.trace) return null;
+    const c = this.h('span', { class: 'trace-chip', 'data-trace': '1' });
+    c.textContent = t('TRACE {1}', fmtClock(run.trace.left));
+    return c;
+  }
+
+  // countdown on the map cards of nodes that kicked you; one re-render when a lockout ends
+  updateLocks(run, now) {
+    const active = Object.entries(run.locked || {}).filter(([, until]) => until > now);
+    for (const [id, until] of active) {
+      const el = this.root.querySelector(`[data-node="${id}"] .st`);
+      if (el) el.textContent = t('TERKUNCI · {1} dtk', Math.ceil((until - now) / 1000));
+    }
+    if (active.length !== (this._lockCount || 0)) {
+      this._lockCount = active.length;
+      if (this.view === 'map' && !this.busy && !this.dlg) this.render();
+    }
   }
 
   // ---------- loading ----------
@@ -449,7 +514,6 @@ export class App {
     if (!hasCmd(this.profile, cmd)) { this.toast('Command terkunci. Beli di Pasar Gelap (peta, Selatan).'); return; }
     const meta = CMD_META[cmd];
     const k = meta.kind;
-    if (k === 'soon') { this.toast(t('{1}: segera hadir di update berikutnya.', cmd)); return; }
     if (k === 'map') { this.overlay = null; this.view = 'map'; this.render(); return; }
     if (k === 'scan') { this.overlay = null; this.runCommand('SCAN', this.cur ? { type: 'device', id: this.cur } : { type: 'rig' }); return; }
     if (k === 'disconnect') { if (!this.cur) return this.failAttempt(cmd, notConnected('DISCONNECT')); this.overlay = null; this.runCommand('DISCONNECT', { type: 'rig' }); return; }
@@ -884,6 +948,7 @@ export class App {
     if (this.view === 'map' || this.view === 'profile') {
       return h('div', { class: 'statusbar' },
         h('span', { class: 'loc' }, '◉ ', CITY_INFO.name.toUpperCase()),
+        this.traceChip(),
         h('span', { class: 'spacer' }),
         h('span', { class: 'day' }, fmtDateShort(this.profile.day)),
         this.focusPill(),
@@ -897,11 +962,13 @@ export class App {
         h('span', { class: 'addr' }, d.addr),
         h('span', { class: 'spacer' }),
         h('span', { class: 'lv' }, LEVEL_LABEL[d.access]),
+        this.traceChip(),
         this.hintBtn());
     }
     return h('div', { class: 'statusbar' },
       h('span', { class: 'loc' }, d ? d.name : this.view === 'goals' ? 'Misi' : 'Terminal'),
       d && h('span', { class: 'lv' }, LEVEL_LABEL[d.access]),
+      this.traceChip(),
       h('span', { class: 'spacer' }),
       this.focusPill(),
       h('span', { class: 'cr' }, '◆ ', String(this.profile.credits)),
@@ -946,9 +1013,9 @@ export class App {
 
   // ===== unified map: city targets + (when jacked in) network nodes =====
   // One `.node` card in map-pixel coords; onclick is suppressed after a drag.
-  nodeCardPx({ cls, cx, cy, icon, title, sub, st, stCls, tag, onclick }) {
+  nodeCardPx({ id, cls, cx, cy, icon, title, sub, st, stCls, tag, onclick }) {
     const h = this.h.bind(this);
-    return h('button', { class: 'node ' + cls, style: `left:${cx}px;top:${cy}px`,
+    return h('button', { class: 'node ' + cls, 'data-node': id, style: `left:${cx}px;top:${cy}px`,
       onclick: (e) => { if (this._dragged) { e.preventDefault(); return; } onclick(); } },
       tag && h('i', { class: 'mchip ' + tag.cls }, tag.t),
       h('div', { class: 'nm' }, this.ic(icon), title),
@@ -1057,13 +1124,16 @@ export class App {
       const due = rut && pendingDays(this.profile, rut.id) > 0;
       const mcode = mid && (active || cleared) ? siteById(mid).code : null;
       const state = isCur ? 'cur' : near.has(d.id) ? 'near' : 'far';
+      const lockSec = Math.ceil(lockLeft(run, d.id) / 1000);
       cards.push(this.nodeCardPx({
+        id: d.id,
         cls: 'dev ' + state + (fresh.has(d.id) ? ' fx-pop fx-sonar' : '') + (d.hub ? ' hub' : '') + (cleared ? ' m-done' : active ? ' m-active' : '') + (d.online ? '' : ' off'),
         cx: d.x, cy: d.y, icon: d.kind, title: d.name, sub: d.addr, tag: mcode ? { t: mcode, cls: cleared ? 'done' : 'on' } : null,
         st: isCur ? t('● TERHUBUNG · {1}', LEVEL_LABEL[d.access])
           : due ? t('RUTIN ◆{1}', payout(this.profile, rut.id, rut, perksFor(this.profile)))
+          : lockSec > 0 ? t('TERKUNCI · {1} dtk', lockSec)
           : d.access !== 'none' ? LEVEL_LABEL[d.access] : !d.online ? 'OFFLINE' : d.statusText || (d.hub ? 'HOTSPOT' : 'TERLIHAT'),
-        stCls: isCur ? 'cur' : due ? 'due' : d.access !== 'none' ? 'lv-' + d.access : d.online && !d.statusText ? '' : 'o',
+        stCls: isCur ? 'cur' : lockSec > 0 ? 'o' : due ? 'due' : d.access !== 'none' ? 'lv-' + d.access : d.online && !d.statusText ? '' : 'o',
         onclick: () => this.tapObject({ type: 'device', id: d.id })
       }));
     }
@@ -1264,6 +1334,10 @@ export class App {
     return [
       h('div', { class: 'section-h' }, 'Cara bermain'),
       h('div', { class: 'setting-note' }, 'Ketuk perangkat di Peta untuk terhubung, lalu pakai CMDS di Terminal. Bicara dengan orang untuk ambil misi, kerjakan di jaringan, lalu serahkan hasilnya. Fokus habis? Tidur di Safehouse.'),
+      h('div', { class: 'section-h' }, 'Trace'),
+      h('div', { class: 'setting-note' }, 'Node yang dijaga ketat melacakmu. Waktu TRACE di bilah atas berjalan selama kamu tersambung (berhenti saat loading). Kalau habis, kamu ditendang dan node itu menolakmu 30 detik. Putus sebelum habis, sisa waktunya disimpan dan pulih pelan-pelan selama kamu pergi.'),
+      h('div', { class: 'section-h' }, 'Kontrak harian'),
+      h('div', { class: 'setting-note' }, 'Setelah misi selesai, kliennya bisa menawarkan kontrak perawatan di Biro Kontrak. Itu penghasilan sampingan yang boleh kamu abaikan atau ambil kapan saja.'),
       h('div', { class: 'section-h' }, 'Perangkat'),
       row(mini('', 'PC'), 'Perangkat biasa', 'Kartu persegi gelap. Ketuk untuk perintah.'),
       row(mini('hub', 'AP'), 'Hotspot distrik', 'Bingkai biru. Pintu masuk tiap distrik.'),
@@ -1391,11 +1465,15 @@ export class App {
       h('div', { class: 'section-h' }, `${mission.title} · ${node.district} · ${DIFF_LABEL[node.difficulty]}`),
       h('div', { style: 'color:var(--muted);font-size:13px;margin-bottom:6px' }, mission.client),
       h('div', { style: 'color:var(--muted);font-size:13px;margin-bottom:14px' }, mission.brief)];
-    for (const o of objs) {
+    // only the goal and the bonus are shown up front; the steps in between are yours to work out,
+    // and they appear here as field notes once you have done them
+    const shown = objs.filter((o) => o.main || o.bonus || o.done);
+    if (shown.length < objs.length) out.push(h('div', { class: 'setting-note' }, 'Cara mencapainya terserah kamu. Langkah yang sudah kamu lakukan tercatat di sini.'));
+    for (const o of shown) {
       out.push(h('div', { class: 'obj' },
         h('div', { class: 'ic', style: o.done ? 'color:var(--green);border-color:var(--green-dim)' : '' }, o.done ? '✓' : '○'),
         h('div', { class: 'main' }, h('b', { style: o.done ? 'color:var(--green)' : '' }, o.text),
-          h('small', {}, o.bonus ? 'bonus' : o.main ? 'utama' : ''))));
+          h('small', {}, o.bonus ? 'bonus' : o.main ? 'utama' : 'catatan'))));
     }
     const giver = npcById(node.giver);
     if (this.profile.cleared[mission.id]) {
@@ -1556,7 +1634,7 @@ export class App {
     } else if (o.kind === 'contracts') {
       const rows = this.contractRows();
       sheet.append(h('h2', {}, 'Biro Kontrak'),
-        h('p', { style: 'color:var(--muted);font-size:13px;margin:4px 0 12px' }, 'Klien yang puas menawarkan kontrak perawatan harian: sambung ke node awal misinya, buka File Server, dan kredit masuk.'),
+        h('p', { style: 'color:var(--muted);font-size:13px;margin:4px 0 12px' }, 'Opsional: penghasilan sampingan, tanpa kewajiban. Klien yang puas mau membayar perawatan harian. Ambil kontraknya, lalu kapan pun kamu sempat, sambung ke node awal misinya dan buka File Server: kredit hari-hari yang terlewat (maksimal 3) ikut masuk.'),
         ...(rows.length ? rows : [h('div', { class: 'empty' }, 'Belum ada kontrak.\nSelesaikan sebuah misi dulu — kliennya akan menawarkan kontrak di sini.')]),
         h('button', { class: 'act dim', onclick: close }, 'TUTUP'));
     } else if (o.kind === 'npcinfo') {

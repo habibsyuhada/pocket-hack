@@ -325,7 +325,11 @@ describe('Babak 1 mission data', () => {
     const first = (id) => mission(id).hints.find((h) => h.when(fresh().run, fresh().profile)).text;
     expect(first('s11')).toMatch(/Tracer/);
     expect(first('s11')).toMatch(/Pasar Gelap/);
-    expect(mission('s11').brief).toMatch(/Tracer/);
-    expect(mission('s09').brief).toMatch(/SEARCH/);
+  });
+
+  it('briefs describe the problem, not the steps: no command names, tools or prices', () => {
+    for (const id of ['s04', 's06', 's07', 's08', 's09', 's10', 's11', 's12', 's13', 's14', 's15', 's16', 's17', 's18', 's19', 's20', 's21']) {
+      expect(mission(id).brief, id).not.toMatch(/\b(SEARCH|TRACE|ROUTE|UPLOAD|EDIT|COMPARE|ELEVATE|DECRYPT|RECOVER|DOWNLOAD|Cipher|Tracer|Sniffer|Mender)\b|◆|Pasar Gelap/);
+    }
   });
 });

@@ -37,8 +37,6 @@ const RAW = [
     desc: 'Ubah bagian file yang interaktif (jadwal, manifest, konfigurasi).' },
   { id: 'cmd_route', name: 'Command: ROUTE', cost: 90, kind: 'cmd', cmd: 'ROUTE',
     desc: 'Lompat lewat node relay ke jaringan yang tak terhubung langsung.' },
-  { id: 'cmd_automation', name: 'Paket: Automation', cost: 260, kind: 'cmd', cmds: ['TOOLS', 'RUN', 'QUEUE', 'SCRIPT'],
-    desc: 'Buka TOOLS, RUN, QUEUE, SCRIPT. (segera hadir)' },
   // Goods: can be bought again and again. Coffee restores Fokus, the rest make gifts.
   { id: 'goods_kopi', section: 'Barang', name: 'Kopi Susu', cost: KOPI_PRICE, kind: 'goods', item: 'kopi',
     desc: 'Pulihkan Fokus +25. Minum dari menu Profil → Inventory.' },

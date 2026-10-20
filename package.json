@@ -2,7 +2,7 @@
   "name": "pocket-hack",
   "version": "0.1.0",
   "private": true,
-  "description": "Game hacker terminal mobile: investigasi, akses, dan kontrol sistem fiktif. Tanpa mengetik, tanpa Trace.",
+  "description": "Game hacker terminal mobile: investigasi, akses, dan kontrol sistem fiktif. Tanpa mengetik, dengan timer Trace di node yang dijaga.",
   "type": "module",
   "scripts": {
     "dev": "vite",

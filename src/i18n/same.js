@@ -23,7 +23,6 @@ export const SAME = [
   "Overclock III",
   "Intel",
   "Server",
-  "Automation",
   "Script Kiddie",
   "Runner",
   "Breaker",

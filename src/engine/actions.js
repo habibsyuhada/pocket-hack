@@ -1,4 +1,5 @@
 import { t, tr } from '../i18n/index.js';
+import { enterNode, leaveNode, lockSeconds } from './trace.js';
 import { hasCmd } from '../game/profile.js';
 import {
   LEVEL_LABEL, TOOLS, atLeast, applyEffects, configValid, device, findFile,
@@ -41,6 +42,7 @@ export function getActions(ctx, target) {
       let why = lockedCmd(profile, 'ROUTE');
       if (!why && !atLeast(src.access, src.routeAccess || 'guest')) why = t('Butuh akses {1} di {2}.', LEVEL_LABEL[src.routeAccess], src.name);
       if (!why && !d.online) why = 'Perangkat sedang offline.';
+      if (!why && lockSeconds(run, d.id) > 0) why = t('{1} memblokirmu (terlacak). Tunggu {2} detik.', d.name, lockSeconds(run, d.id));
       out.push(A('ROUTE', !why, why));
     }
     // SCAN a node once you hold access to it (reachable from the net map).
@@ -48,6 +50,7 @@ export function getActions(ctx, target) {
     if (!here) {
       let why = '';
       if (!d.online) why = 'Perangkat sedang offline.';
+      else if (lockSeconds(run, d.id) > 0) why = t('{1} memblokirmu (terlacak). Tunggu {2} detik.', d.name, lockSeconds(run, d.id));
       else if (!reachable(run, mission, d.id)) why = 'Belum ada jalur. Kuasai perangkat yang terhubung dulu.';
       out.push(A('CONNECT', !why, why));
     }
@@ -219,6 +222,7 @@ export function exec(ctx, cmd, target, arg) {
       break;
     }
     case 'DISCONNECT':
+      leaveNode(run);
       run.current = null;
       out.push({ t: 'out', text: 'Kembali ke rig lokal.' });
       break;
@@ -246,6 +250,7 @@ export function exec(ctx, cmd, target, arg) {
     case 'ROUTE': {
       const via = device(run, run.current);
       run.current = d.id;
+      enterNode(run, d);
       d.discovered = true;
       if (d.open && !atLeast(d.access, d.open)) d.access = d.open;
       out.push({ t: 'ok', text: t('Rute via {1} dibuka. Terhubung ke {2}. Akses: {3}.', via.name, d.name, LEVEL_LABEL[d.access]) });
@@ -282,6 +287,7 @@ export function exec(ctx, cmd, target, arg) {
     }
     case 'CONNECT': {
       run.current = d.id;
+      enterNode(run, d);
       if (d.open && !atLeast(d.access, d.open)) d.access = d.open;
       out.push({ t: 'ok', text: t('Terhubung ke {1}. Akses: {2}.', d.name, LEVEL_LABEL[d.access]) });
       applyEffects(run, mission, d.onConnect, out);

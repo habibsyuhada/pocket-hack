@@ -40,19 +40,13 @@ export const CMD_META = {
   START: { group: 'feature', kind: 'proc', desc: 'Jalankan layanan.' },
   CONFIG: { group: 'feature', kind: 'proc', desc: 'Atur konfigurasi layanan.' },
   RESTORE: { group: 'feature', kind: 'proc', desc: 'Kembalikan konfigurasi.' },
-  CONTROL: { group: 'server', kind: 'controlpage', desc: 'Buka halaman kontrol perangkat.' },
-  // Automation
-  TOOLS: { group: 'auto', kind: 'soon', desc: 'Koleksi program milikmu.' },
-  RUN: { group: 'auto', kind: 'soon', desc: 'Jalankan tool pada objek.' },
-  QUEUE: { group: 'auto', kind: 'soon', desc: 'Susun urutan tindakan.' },
-  SCRIPT: { group: 'auto', kind: 'soon', desc: 'Automation blok visual.' }
+  CONTROL: { group: 'server', kind: 'controlpage', desc: 'Buka halaman kontrol perangkat.' }
 };
 
 export const GROUPS = [
   { id: 'explore', name: 'Eksplorasi' },
   { id: 'access', name: 'Akses' },
-  { id: 'server', name: 'Server' },
-  { id: 'auto', name: 'Automation' }
+  { id: 'server', name: 'Server' }
 ];
 
 // Everything the 4 sites need, plus free navigation helpers — never locked.

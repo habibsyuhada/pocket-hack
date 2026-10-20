@@ -18,11 +18,11 @@ describe('command catalog', () => {
   it('fresh profile has all default commands and none of the locked extras', () => {
     const p = newProfile();
     for (const c of DEFAULT_CMDS) expect(hasCmd(p, c)).toBe(true);
-    for (const c of ['SEARCH', 'UPLOAD', 'EDIT', 'ROUTE', 'TOOLS', 'RUN', 'QUEUE', 'SCRIPT']) expect(hasCmd(p, c)).toBe(false);
+    for (const c of ['SEARCH', 'UPLOAD', 'EDIT', 'ROUTE']) expect(hasCmd(p, c)).toBe(false);
   });
 
   it('every command has metadata and belongs to a listed group', () => {
-    const groups = new Set(['explore', 'access', 'server', 'feature', 'auto']);
+    const groups = new Set(['explore', 'access', 'server', 'feature']);
     for (const [cmd, meta] of Object.entries(CMD_META)) {
       expect(groups.has(meta.group)).toBe(true);
       expect(typeof meta.desc).toBe('string');
@@ -33,7 +33,7 @@ describe('command catalog', () => {
 
   it('catalog has one Server group: FILES, SERVICES, CONTROL — no file/service commands', () => {
     expect(groupCommands('server').sort()).toEqual(['CONTROL', 'FILES', 'SERVICES']);
-    expect(GROUPS.map((g) => g.id)).toEqual(['explore', 'access', 'server', 'auto']);
+    expect(GROUPS.map((g) => g.id)).toEqual(['explore', 'access', 'server']);
   });
 
   it('commandTargets lists reachable devices for CONNECT', () => {
@@ -61,13 +61,6 @@ describe('command catalog', () => {
     const r = buy(p, 'cmd_search');
     expect(r.ok).toBe(true);
     expect(hasCmd(p, 'SEARCH')).toBe(true);
-  });
-
-  it('automation bundle unlocks all four commands', () => {
-    const p = newProfile();
-    p.credits = 500;
-    buy(p, 'cmd_automation');
-    for (const c of ['TOOLS', 'RUN', 'QUEUE', 'SCRIPT']) expect(hasCmd(p, c)).toBe(true);
   });
 
   it('SEARCH lists files of the connected node', () => {

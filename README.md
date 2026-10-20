@@ -45,17 +45,21 @@ berikutnya dan keuntungan (diskon, hint murah, Fokus, dll).
 - **NPC:** Bu Laras, Rani, Dimas, Mbah Gun, Pak Hadi, Vira, dr. Wulan, Kapten Sari.
 - **Command baru:** `ROUTE`, `UPLOAD`, `EDIT` (beli di Pasar Gelap), `TRACE` (butuh tool Tracer). Tool baru: Sniffer (INSPECT menangkap lalu lintas) dan Tracer. Upgrade: RAM, Rig Pendingin, Kasur Empuk.
 - Kontrak penulisan misi baru: `docs/v1-spec.md`. Tiap misi di `src/sites/sNN_*.js` membawa `meta`, `edges`, `place`, `dialogue`, dan terjemahan di `src/i18n/extra/sNN.js`.
-- Belum di v1: paket Automation (TOOLS/RUN/QUEUE/SCRIPT), Heat, dan pencapaian.
+- Belum di v1: Heat dan pencapaian.
 
 ## Suara, musik, dan efek visual
 Semua suara dan musik **disintesis di kode** (WebAudio, tanpa berkas aset) di `src/fx/`: `audio.js` (mesin + limiter), `sfx.js` (58 SFX + suara dialog per NPC), `music.js` (musik ambient generatif per adegan (adegan harian berkunci mayor yang ceria; industri, tegang, dan tidur tetap gelap)), `vfx.js` + `fx.css` (partikel, ripple, teks melayang, shake/glitch), `haptics.js`, `index.js` (satu pintu `fx.*`). Pengaturan: Profil → Pengaturan (Suara, Musik, Getar, Efek visual Penuh/Hemat/Mati; mengikuti `prefers-reduced-motion`).
 Cek kualitas audio: `node tools/render-audio.mjs [dir]` merender semua suara secara offline (Chromium), memeriksa senyap/clipping/klik, dan menulis WAV untuk didengar.
 
+## Trace dan kebebasan bermain
+- **Trace:** node yang dijaga (misi dif 2 ke atas yang punya sandi, celah, atau kredensial) memberi waktu 130–210 detik. Waktu berjalan selama tersambung dan berhenti saat loading, dialog, dan tidur. Habis → ditendang, node menolak 30 detik. Putus lebih awal menyimpan sisa waktu, yang pulih 1 detik per detik saat pergi. Misi tutorial (dif 1) tidak punya Trace. Logika di `src/engine/trace.js`.
+- **Tidak diarahkan:** Goals hanya menampilkan tujuan utama dan bonus; langkah di antaranya muncul sebagai catatan setelah dikerjakan. Brief misi (`src/sites/briefs.js`) hanya menceritakan masalah, tanpa nama command, tool, atau harga.
+
 ## Navigasi
 
 Bottom bar: **Peta · Terminal · Goals · Profil**. **Pasar Gelap** (Selatan) dan **Biro Kontrak**
 adalah node di peta, bukan tab. Profil adalah menu: Inventory, Kontak, Tool & Command, Arsip, Bantuan (legenda peta), Pengaturan. Tombol rumah di peta menggeser kamera ke Safehouse. Kotak dialog berukuran tetap; teks panjang dipecah per halaman. Terminal punya
-tombol **CMDS** (grup Eksplorasi, Akses, Server, Automation). Command
+tombol **CMDS** (grup Eksplorasi, Akses, Server). Command
 **Server** (`FILES`, `SERVICES`, `CONTROL`) membuka halaman File / Service /
 Control node yang terhubung; `READ`, `DOWNLOAD`, `DECRYPT`, `STOP`, `START`,
 `CONFIG`, dll. dipakai dengan mengetuk file/proses di halaman itu.

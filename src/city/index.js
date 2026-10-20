@@ -6,6 +6,8 @@ import { SITES } from '../sites/index.js';
 import { dressWorld } from '../sites/flavor.js';
 import { GENERIC_NODES, EXTRA_NODES, EDGES } from './nodes.js';
 import { placeOf, DISTRICTS, PLACE } from './layout.js';
+import { MISSIONS } from '../game/world.js';
+import { TRACE_SECONDS } from '../engine/trace.js';
 
 const clone = (o) => structuredClone(o);
 
@@ -65,6 +67,14 @@ function buildCity() {
     }
   }
 
+  // secured nodes of missions from difficulty 2 up trace you: stay too long and you are kicked out
+  const diff = Object.fromEntries(MISSIONS.map((m) => [m.id, m.difficulty]));
+  const guarded = new Set(Object.values(creds).map((c) => c.device));
+  for (const [id, d] of Object.entries(devices)) {
+    const secs = TRACE_SECONDS[diff[owner[id]]];
+    if (secs && (d.crack || d.exploit || d.elevate || guarded.has(id))) d.trace = secs;
+  }
+
   // placement
   for (const [id, d] of Object.entries(devices)) {
     const pos = placeOf(id);
@@ -88,7 +98,7 @@ function buildCity() {
 export const CITY = buildCity();
 export { DISTRICTS };
 // bump when city content changes so saved runs are rebuilt (progress is carried over)
-export const CITY_VERSION = 3;
+export const CITY_VERSION = 4;
 export const START_NODES = ['isp_core'];             // your rig's uplink, known from day one
 
 export const missionOfNode = (id) => CITY.owner[id] || null;
