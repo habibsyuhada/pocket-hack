@@ -12,7 +12,6 @@ export const CMD_META = {
   CONNECT: { group: 'explore', kind: 'connect', desc: 'Hubungkan ke perangkat.' },
   INSPECT: { group: 'explore', kind: 'device', desc: 'Periksa perangkat terhubung.' },
   MAP: { group: 'explore', kind: 'map', desc: 'Buka peta jaringan.' },
-  PING: { group: 'explore', kind: 'ping', desc: 'Cek apakah node online (gratis).' },
   ROUTE: { group: 'explore', kind: 'route', desc: 'Lompat lewat relay ke jaringan lain.' },
   // Akses
   LOGIN: { group: 'access', kind: 'device', desc: 'Masuk dengan kredensial.' },
@@ -58,7 +57,7 @@ export const GROUPS = [
 
 // Everything the 4 sites need, plus free navigation helpers — never locked.
 export const DEFAULT_CMDS = [
-  'SCAN', 'INSPECT', 'MAP', 'PING', 'TRACE', 'CONNECT', 'LOGIN', 'CRACK', 'EXPLOIT', 'ELEVATE', 'DISCONNECT',
+  'SCAN', 'INSPECT', 'MAP', 'TRACE', 'CONNECT', 'LOGIN', 'CRACK', 'EXPLOIT', 'ELEVATE', 'DISCONNECT',
   'FILES', 'SERVICES', 'LS', 'READ', 'DOWNLOAD', 'RECOVER', 'DECRYPT', 'COMPARE',
   'PS', 'STOP', 'START', 'CONFIG', 'RESTORE', 'CONTROL'
 ];

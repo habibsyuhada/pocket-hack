@@ -1,4 +1,4 @@
-// Generative ambient music. A scene = pad + drone + bass pulse + sparse arp/bells,
+// Generative ambient music (bright major-key chiptune-ish for the everyday scenes; minor/dark for industri, tense, sleep). A scene = pad + drone + bass pulse + sparse arp/bells,
 // scheduled step by step (eighth notes) from a pure function of the step index, so the
 // same code runs live (look-ahead timer) and offline (renderScene, no timer).
 import { audio } from './audio.js';
@@ -16,19 +16,20 @@ function rnd(i, s) {
 
 // chords: [bassRootMidi, [pad intervals above root+12]]
 const DEF = {
-  intro: { bpm: 56, cb: 8, vol: 0.9, wave: 'sawtooth', cut: 520, lfo: 0.05, pad: 0.07, drone: 0.1,
-    ch: [[45, [0, 7, 10]], [41, [0, 7, 11]], [43, [0, 6, 10]], [40, [0, 7, 10, 14]]],
-    bell: { p: 0.07, v: 0.07, oct: 2 }, echo: [0.45, 0.45, 0.35] },
-  map: { bpm: 66, cb: 8, vol: 1, wave: 'sawtooth', cut: 800, lfo: 0.08, pad: 0.07, drone: 0.1,
-    ch: [[48, [0, 7, 11, 16]], [45, [0, 7, 10, 15]], [41, [0, 7, 11, 16]], [43, [0, 7, 12, 14]]],
-    arp: { p: 0.1, v: 0.06, oct: 1, wave: 'triangle' }, bell: { p: 0.06, v: 0.07, oct: 2 }, echo: [0.36, 0.4, 0.3] },
-  terminal: { bpm: 84, cb: 8, vol: 0.9, wave: 'sawtooth', cut: 520, lfo: 0.11, pad: 0.05, drone: 0.08,
-    ch: [[45, [0, 7, 10, 15]], [41, [0, 7, 11, 14]], [48, [0, 7, 12, 16]], [43, [0, 7, 10, 14]]],
-    bass: { pat: 'x.x.x.xx', wave: 'triangle', cut: 420, v: 0.17 },
-    arp: { p: 0.22, v: 0.05, oct: 1, wave: 'square' }, echo: [0.36, 0.35, 0.3] },
-  dialog: { bpm: 72, cb: 8, vol: 1, wave: 'triangle', cut: 1800, lfo: 0.1, pad: 0.085, drone: 0.07,
-    ch: [[48, [0, 7, 14, 16]], [41, [0, 7, 14, 17]], [43, [0, 5, 7, 14]], [45, [0, 7, 10, 15]]],
-    arp: { p: 0.12, v: 0.05, oct: 1, wave: 'sine' }, bell: { p: 0.09, v: 0.06, oct: 2 }, echo: [0.4, 0.35, 0.3] },
+  intro: { bpm: 76, cb: 8, vol: 0.95, wave: 'triangle', cut: 1500, lfo: 0.07, pad: 0.08, drone: 0.08,
+    ch: [[48, [0, 4, 7, 11]], [43, [0, 4, 7, 14]], [45, [0, 3, 7, 14]], [41, [0, 4, 7, 11]]],
+    arp: { p: 0.3, v: 0.055, oct: 1, wave: 'triangle' }, bell: { p: 0.14, v: 0.07, oct: 2 }, echo: [0.4, 0.4, 0.32] },
+  map: { bpm: 96, cb: 8, vol: 1, wave: 'triangle', cut: 1900, lfo: 0.09, pad: 0.07, drone: 0.07,
+    ch: [[48, [0, 4, 7, 14]], [43, [0, 4, 7, 11]], [45, [0, 4, 7, 12]], [41, [0, 4, 7, 14]]],
+    bass: { pat: 'x..xx...', wave: 'triangle', cut: 600, v: 0.15 },
+    arp: { p: 0.42, v: 0.055, oct: 1, wave: 'square' }, bell: { p: 0.1, v: 0.07, oct: 2 }, echo: [0.31, 0.35, 0.3] },
+  terminal: { bpm: 104, cb: 8, vol: 0.95, wave: 'triangle', cut: 1400, lfo: 0.11, pad: 0.05, drone: 0.06,
+    ch: [[45, [0, 3, 7, 14]], [41, [0, 4, 7, 11]], [48, [0, 4, 7, 14]], [43, [0, 4, 7, 12]]],
+    bass: { pat: 'x.xxx.x.', wave: 'triangle', cut: 520, v: 0.17 },
+    arp: { p: 0.5, v: 0.05, oct: 1, wave: 'square' }, bell: { p: 0.06, v: 0.06, oct: 2 }, echo: [0.29, 0.33, 0.28] },
+  dialog: { bpm: 84, cb: 8, vol: 1, wave: 'triangle', cut: 2200, lfo: 0.1, pad: 0.085, drone: 0.06,
+    ch: [[48, [0, 4, 7, 14]], [41, [0, 4, 9, 14]], [43, [0, 4, 7, 12]], [45, [0, 3, 7, 10]]],
+    arp: { p: 0.26, v: 0.05, oct: 1, wave: 'sine' }, bell: { p: 0.12, v: 0.06, oct: 2 }, echo: [0.36, 0.33, 0.3] },
   industri: { bpm: 78, cb: 8, vol: 0.9, wave: 'sawtooth', cut: 420, lfo: 0.07, pad: 0.06, drone: 0.12,
     ch: [[38, [0, 1, 7, 10]], [34, [0, 7, 11, 13]], [43, [0, 6, 7, 10]], [33, [0, 1, 7, 12]]],
     bass: { pat: 'x..x..x.', wave: 'sawtooth', cut: 260, v: 0.13 },
@@ -40,9 +41,10 @@ const DEF = {
   sleep: { bpm: 44, cb: 8, vol: 0.9, wave: 'sine', cut: 700, lfo: 0.04, pad: 0.09, drone: 0.1,
     ch: [[43, [0, 7, 11, 16]], [41, [0, 7, 11, 14]], [40, [0, 7, 10, 14]], [41, [0, 7, 11, 16]]],
     bell: { p: 0.08, v: 0.05, oct: 3 }, echo: [0.6, 0.45, 0.4] },
-  ending: { bpm: 60, cb: 8, vol: 1, wave: 'triangle', cut: 1500, lfo: 0.06, pad: 0.085, drone: 0.1,
-    ch: [[41, [0, 7, 12, 16]], [43, [0, 7, 11, 14]], [45, [0, 7, 10, 15]], [48, [0, 7, 12, 16]]],
-    arp: { p: 0.14, v: 0.055, oct: 1, wave: 'triangle' }, bell: { p: 0.1, v: 0.07, oct: 2 }, echo: [0.4, 0.4, 0.35] }
+  ending: { bpm: 88, cb: 8, vol: 1, wave: 'triangle', cut: 2400, lfo: 0.06, pad: 0.085, drone: 0.08,
+    ch: [[41, [0, 4, 7, 14]], [43, [0, 4, 7, 11]], [45, [0, 3, 7, 14]], [48, [0, 4, 7, 12]]],
+    bass: { pat: 'x...x...', wave: 'triangle', cut: 500, v: 0.13 },
+    arp: { p: 0.34, v: 0.06, oct: 1, wave: 'triangle' }, bell: { p: 0.16, v: 0.07, oct: 2 }, echo: [0.34, 0.38, 0.34] }
 };
 
 function track(sc, n) { sc.srcs.add(n); n.onended = () => sc.srcs.delete(n); return n; }

@@ -77,12 +77,12 @@ describe('s13 Kapal Nelayan Hilang Sinyal', () => {
     must(ctx, 'LOGIN', dev('s13_stasiun'), 's13_operator');
   }
 
-  it('full solution: uplink, PING, ROUTE via pemancar, stop gpsloop, download', () => {
+  it('full solution: uplink, ROUTE via pemancar, stop gpsloop, download', () => {
     const ctx = game(); ctx.profile.cmds.push('ROUTE');
     toStation(ctx);
-    expect(exec(ctx, 'PING', dev('s13_modem')).out.some((l) => /offline/.test(l.text))).toBe(true);
+    expect(ctx.run.devices.s13_modem.online).toBe(false);
     must(ctx, 'START', proc('s13_stasiun', 's13_uplink'));
-    expect(exec(ctx, 'PING', dev('s13_modem')).out.some((l) => /ms/.test(l.text))).toBe(true);
+    expect(ctx.run.devices.s13_modem.online).toBe(true);
     go(ctx, 'timur_hub'); go(ctx, 'radio_server'); go(ctx, 'pemancar');
     route(ctx, 's13_modem');
     expect(ctx.run.current).toBe('s13_modem');

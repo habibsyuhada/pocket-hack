@@ -55,7 +55,7 @@ Mood dialog: `normal | happy | worried | serious`. Garis dialog: `N(teks, mood)`
 | **EDIT** | di file: `edit: { options: ['…','…'], answer: '…', minAccess: 'admin', result: { content: '…' }, onDone: fx }` | pemain memilih satu opsi; benar → file berubah (`result`) + efek. Salah → tak berubah, boleh coba lagi. |
 | **TRACE** (butuh tool Tracer) | di file: `trace: { text: '…', fx }` | membuka lembar hasil lacak + efek. Sekali per file. |
 | **Sniffer** (tool) | di node: `sniff: { text: '…', fx }` | INSPECT menampilkan teks tambahan + efek bila pemain punya Sniffer. |
-| **PING** | otomatis | cek online/offline; node `online:false` menjadi online lewat efek `online: [id]`. |
+| **Status online** | otomatis | peta menampilkan OFFLINE; node `online:false` menjadi online lewat efek `online: [id]`. |
 Efek `fx`: `{ flags: [], clues: [], creds: [], reveal: [nodeId], online: [nodeId], log: 'teks' }`.
 Existing yang bisa dipakai: `crack`, `exploit`, `elevate`, `procs` (lock, config, onStop/onStart), `controls`, file `encrypted`, `deleted/corrupt` (RECOVER, perlu Mender), `compare`+`diffs`, `onRead/onDownload`, `requiresProc`. Contoh semuanya ada di `src/sites/s00..s06`.
 
@@ -70,7 +70,7 @@ Sel = `[kolom, baris, distrik]`. Hotspot sudah ada: `tengah_hub, utara_hub, bara
 | s10 | Wi-Fi Asrama | vira / 0 | 2 | 220 / 60 | `[0,4]`,`[1,4]`,`[0,5]` barat | CRACK dengan kandidat dari 2 petunjuk berbeda |
 | s11 | Surat Tanpa Pengirim | hadi / 1 (+requires s08) | 2 | 260 / 80 | `[3,4,tengah]` | TRACE (Tracer ◆140); petunjuk pertama SENTINEL: pengirim di "kawasan industri" (flag `sentinel_industri`) |
 | s12 | Klinik: Jadwal Obat Kacau | wulan / 0 | 3 | 320 / 90 | `[6,7]`,`[6,8]` timur | COMPARE jadwal dokter vs farmasi, EDIT (◆130) |
-| s13 | Kapal Nelayan Hilang Sinyal | sari / 0 | 3 | 340 / 100 | `[9,5]`,`[10,5]`,`[10,6]` timur | PING (node offline), ROUTE lewat `pemancar` (patch `routes`), START layanan |
+| s13 | Kapal Nelayan Hilang Sinyal | sari / 0 | 3 | 340 / 100 | `[9,5]`,`[10,5]`,`[10,6]` timur | node offline, ROUTE lewat `pemancar` (patch `routes`), START layanan |
 | s14 | Syahbandar: Manifest Palsu | sari / 1 | 3 | 380 / 110 | `[9,7]`,`[9,8]`,`[10,8]`,`[10,9]` timur | COMPARE dua manifest, EDIT; dua akhir (lapor / benahi diam-diam) |
 | s15 | Server Himpunan | vira / 1 | 3 | 400 / 110 | `[0,11]`,`[1,11]`,`[2,11]`,`[1,12]` barat | DECRYPT (Cipher ◆120), kunci disimpulkan dari 2 file di node berbeda |
 | s16 | Bursa: Dompet Beku | gun / 1 | 4 | 420 / 120 | `[1,13]`,`[1,14]`,`[2,14]`,`[0,14]` selatan | ELEVATE; pilihan moral: kembalikan dana ke korban / ambil upah / keduanya sebagian (3 ending) |

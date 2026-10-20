@@ -98,5 +98,5 @@ export default {
     "Tidak ada file yang bisa diubah di node ini.": "There is no file to edit on this node.",
     "Tidak ada pesan atau koneksi yang bisa dilacak di sini.": "There is no message or connection to trace here."
   },
-  same: ['Vira', 'Sniffer', 'Tracer', 'PING', 'TRACE']
+  same: ['Vira', 'Sniffer', 'Tracer', 'TRACE']
 };

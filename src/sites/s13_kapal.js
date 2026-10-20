@@ -1,4 +1,4 @@
-// "Kapal Nelayan Hilang Sinyal" — PING menunjukkan modem kapal offline. Nyalakan
+// "Kapal Nelayan Hilang Sinyal" — peta menunjukkan modem kapal offline. Nyalakan
 // layanan uplink di stasiun pantau (START), lalu ROUTE lewat Pemancar FM karena
 // modem kapal tidak tertaut ke jaringan kota. Di kapal: hentikan loop GPS, ambil
 // posisi, dan (bonus) atur kanal beacon darurat.
@@ -15,7 +15,7 @@ export default {
   reward: 340,
   brief:
     'KM Bahari 17 hilang kontak sejak badai dini hari. Modem kapalnya tidak menjawab, dan tidak tertaut ke jaringan kota. ' +
-    'Nyalakan lagi layanan uplink di Stasiun Pantau, cek modemnya dengan PING, lalu jangkau lewat rute dari Pemancar FM ' +
+    'Nyalakan lagi layanan uplink di Stasiun Pantau, pantau status modemnya di peta, lalu jangkau lewat rute dari Pemancar FM ' +
     '(ROUTE, ◆90 — beli di Pasar Gelap). Ambil catatan posisi terakhir kapal.',
   entry: ['s13_stasiun'],
   world: {
@@ -28,7 +28,7 @@ export default {
             content:
               'DAFTAR KAPAL KELUAR\n\nKM Bahari 17 (Pak Jumadi + 4 awak) — berangkat 02.10, terakhir terpantau 03.12\n' +
               'KM Mutiara 3 — kembali 05.40, aman\nKM Rezeki 5 — sandar, perbaikan\n\n' +
-              'Catatan jaga: tautan ke kapal diurus layanan "uplink" di stasiun ini. Sejak badai uplink mati; modem KM Bahari 17 tidak menjawab PING.\n' +
+              'Catatan jaga: tautan ke kapal diurus layanan "uplink" di stasiun ini. Sejak badai uplink mati; modem KM Bahari 17 tampil OFFLINE di peta.\n' +
               'Modem kapal berdiri sendiri, tidak tertaut ke jaringan kota. Jalurnya hanya lewat menara Pemancar FM.' },
           { id: 's13_log_stasiun', name: 'log_stasiun.txt', minAccess: 'user',
             content:
@@ -99,7 +99,7 @@ export default {
         { id: 's13_catatan_menara', name: 'catatan_menara.txt', minAccess: 'guest',
           content:
             'CATATAN MENARA\n\nAntena menara masih memancar ke laut. Modem kapal yang lepas dari jaringan kota tetap bisa dijangkau dengan ROUTE dari menara ini,\n' +
-            'asal modem itu sudah menjawab (online) dan kamu punya akses user di sini.\nCek dulu dengan PING.' }
+            'asal modem itu sudah menjawab (online) dan kamu punya akses user di sini.\nCek dulu statusnya di peta.' }
       ]
     }
   },
@@ -117,7 +117,7 @@ export default {
       text: 'Kamu butuh ROUTE (◆90, beli di Pasar Gelap) untuk menjangkau modem kapal. Mulai dari Stasiun Pantau Kapal di Pelabuhan Timur.' },
     { when: (r) => r.devices.s13_stasiun.access !== 'user' && !r.creds.includes('s13_operator'), text: 'Akun operator ditempel di printer balai desa: baca tempelan_dermaga.txt di Printer Balai Desa.' },
     { when: (r) => r.devices.s13_stasiun.access !== 'user', text: 'CONNECT ke Stasiun Pantau Kapal lalu LOGIN sebagai operator.' },
-    { when: (r) => !procRunning(r, 's13_stasiun', 's13_uplink') && !r.devices.s13_modem.online, text: 'Buka Service Server stasiun dan START uplink. Setelah itu PING modem untuk memastikan online.' },
+    { when: (r) => !procRunning(r, 's13_stasiun', 's13_uplink') && !r.devices.s13_modem.online, text: 'Buka Service Server stasiun dan START uplink. Setelah itu cek di peta: modem harus tampil online.' },
     { when: (r) => r.devices.s13_modem.access === 'none', text: 'Modem kapal tidak tertaut. CONNECT ke Pemancar FM (akses user), lalu ROUTE ke Modem Satelit KM Bahari 17.' },
     { when: (r) => procRunning(r, 's13_modem', 's13_gpsloop'), text: 'Posisi terkunci loop GPS. Buka Service Server modem dan STOP gpsloop.' },
     { when: (r) => !hasLocal(r, 's13_posisi'), text: 'Buka File Server modem, lalu DOWNLOAD posisi_terakhir.txt.' },
@@ -134,7 +134,7 @@ export default {
     offer: offer(
       [
         N('KM Bahari 17 hilang kontak sejak badai. Lima orang di dalamnya.', 'worried'),
-        N('Modem kapal mati dan tidak tertaut ke jaringan kota. Kamu cek dengan PING, hidupkan uplink, lalu masuk lewat Pemancar FM.'),
+        N('Modem kapal mati dan tidak tertaut ke jaringan kota. Kamu cek statusnya di peta, hidupkan uplink, lalu masuk lewat Pemancar FM.'),
         N('Itu butuh ROUTE dari Pasar Gelap. Cepat ya. Saya butuh posisi mereka.', 'serious')
       ],
       'Saya berangkat sekarang.', 'Belum siap, Kapten.',

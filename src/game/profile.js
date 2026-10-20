@@ -12,7 +12,7 @@ export const TOOLS = {
 // Commands unlocked from the start — everything the 4 sites need, so the
 // player is never blocked. Kept here (not imported) to avoid a cycle.
 const DEFAULT_CMDS = [
-  'SCAN', 'INSPECT', 'MAP', 'PING', 'TRACE', 'CONNECT', 'LOGIN', 'CRACK', 'EXPLOIT', 'ELEVATE', 'DISCONNECT',
+  'SCAN', 'INSPECT', 'MAP', 'TRACE', 'CONNECT', 'LOGIN', 'CRACK', 'EXPLOIT', 'ELEVATE', 'DISCONNECT',
   'FILES', 'SERVICES', 'LS', 'READ', 'DOWNLOAD', 'RECOVER', 'DECRYPT', 'COMPARE',
   'PS', 'STOP', 'START', 'CONFIG', 'RESTORE', 'CONTROL'
 ];

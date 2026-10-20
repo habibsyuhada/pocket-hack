@@ -35,7 +35,6 @@ export function getActions(ctx, target) {
     const d = device(run, target.id);
     const here = run.current === d.id;
     out.push(A('INSPECT', true));
-    if (!here) out.push(A('PING', true));
     // ROUTE: hop through the node you are on to a network that is not wired to it
     const src = run.current ? device(run, run.current) : null;
     if (src?.routes?.includes(d.id)) {
@@ -244,12 +243,6 @@ export function exec(ctx, cmd, target, arg) {
         applyEffects(run, mission, d.sniff.fx, out);
       }
       break;
-    case 'PING': {
-      if (!d.online) { out.push({ t: 'warn', text: t('{1}: tidak ada balasan (offline).', d.addr) }); break; }
-      const ms = 6 + ([...d.addr].reduce((n, c) => n + c.charCodeAt(0), 0) % 47);
-      out.push({ t: 'ok', text: t('Balasan dari {1}: {2} ms.', d.addr, ms) });
-      break;
-    }
     case 'ROUTE': {
       const via = device(run, run.current);
       run.current = d.id;

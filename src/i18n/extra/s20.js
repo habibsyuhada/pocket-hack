@@ -38,7 +38,7 @@ export default {
     "Di Server Vendor Sensor ada dua patch. Tiketnya menyebut sensor SN-200: ambil patch_sensor_v2.bin dengan DOWNLOAD.": "The Sensor Vendor Server has two patches. The ticket mentions an SN-200 sensor: DOWNLOAD patch_sensor_v2.bin.",
     "CONNECT ke Sensor Suhu SN-200, lalu LOGIN dengan akun servis dari tiket.": "CONNECT to Temperature Sensor SN-200, then LOGIN with the service account from the ticket.",
     "Sudah di sensor? Pilih patch_sensor_v2.bin di perangkatmu lalu UPLOAD. Patch lama hanya bikin sensor salah baca.": "Already at the sensor? Pick patch_sensor_v2.bin on your device and UPLOAD it. The old patch only makes the sensor misread.",
-    "Coba PING kompresor — kalau belum menjawab, patch belum masuk.": "Try PING on the compressor — if it does not answer yet, the patch has not gone in.",
+    "Cek kompresor di peta — kalau masih OFFLINE, patch belum masuk.": "Check the compressor on the map — if it still shows OFFLINE, the patch has not gone in.",
     "CONNECT ke Kompresor Gudang, lalu CONTROL → Mode Kompresor → NORMAL. Hindari TURBO.": "CONNECT to the Storage Compressor, then CONTROL → Compressor Mode → NORMAL. Avoid TURBO.",
     "Kembalikan gudang yang dingin kepada Mbah Gun": "Return the cold store to Mbah Gun",
     "Suhu gudang turun ke -18 °C. Ikan, sayur, dan obat selamat. Mbah Gun menepuk bahumu sekali, lalu menaruh kunci dingin di telapak tanganmu.": "Storage temperature drops to -18 °C. The fish, vegetables and medicine are saved. Mbah Gun pats your shoulder once, then places the cold-storage key in your palm.",

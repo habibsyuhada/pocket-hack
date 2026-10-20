@@ -43,12 +43,12 @@ berikutnya dan keuntungan (diskon, hint murah, Fokus, dll).
 - **Kota:** 6 distrik. Kawasan **Industri** terputus dari jaringan kota; hanya bisa dicapai dengan `ROUTE` dari **Menara Relay Selatan** (admin menara didapat di misi s17).
 - **22 misi** dalam 3 babak (s00–s21), cerita besar "Blackout / SENTINEL"; finale s21 punya 3 ending (lapor ke Pak Hadi, bocorkan ke Rani, jual ke Mbah Gun).
 - **NPC:** Bu Laras, Rani, Dimas, Mbah Gun, Pak Hadi, Vira, dr. Wulan, Kapten Sari.
-- **Command baru:** `PING` (gratis), `ROUTE`, `UPLOAD`, `EDIT` (beli di Pasar Gelap), `TRACE` (butuh tool Tracer). Tool baru: Sniffer (INSPECT menangkap lalu lintas) dan Tracer. Upgrade: RAM, Rig Pendingin, Kasur Empuk.
+- **Command baru:** `ROUTE`, `UPLOAD`, `EDIT` (beli di Pasar Gelap), `TRACE` (butuh tool Tracer). Tool baru: Sniffer (INSPECT menangkap lalu lintas) dan Tracer. Upgrade: RAM, Rig Pendingin, Kasur Empuk.
 - Kontrak penulisan misi baru: `docs/v1-spec.md`. Tiap misi di `src/sites/sNN_*.js` membawa `meta`, `edges`, `place`, `dialogue`, dan terjemahan di `src/i18n/extra/sNN.js`.
 - Belum di v1: paket Automation (TOOLS/RUN/QUEUE/SCRIPT), Heat, dan pencapaian.
 
 ## Suara, musik, dan efek visual
-Semua suara dan musik **disintesis di kode** (WebAudio, tanpa berkas aset) di `src/fx/`: `audio.js` (mesin + limiter), `sfx.js` (58 SFX + suara dialog per NPC), `music.js` (musik ambient generatif per adegan), `vfx.js` + `fx.css` (partikel, ripple, teks melayang, shake/glitch), `haptics.js`, `index.js` (satu pintu `fx.*`). Pengaturan: Profil → Pengaturan (Suara, Musik, Getar, Efek visual Penuh/Hemat/Mati; mengikuti `prefers-reduced-motion`).
+Semua suara dan musik **disintesis di kode** (WebAudio, tanpa berkas aset) di `src/fx/`: `audio.js` (mesin + limiter), `sfx.js` (58 SFX + suara dialog per NPC), `music.js` (musik ambient generatif per adegan (adegan harian berkunci mayor yang ceria; industri, tegang, dan tidur tetap gelap)), `vfx.js` + `fx.css` (partikel, ripple, teks melayang, shake/glitch), `haptics.js`, `index.js` (satu pintu `fx.*`). Pengaturan: Profil → Pengaturan (Suara, Musik, Getar, Efek visual Penuh/Hemat/Mati; mengikuti `prefers-reduced-motion`).
 Cek kualitas audio: `node tools/render-audio.mjs [dir]` merender semua suara secara offline (Chromium), memeriksa senyap/clipping/klik, dan menulis WAV untuk didengar.
 
 ## Navigasi

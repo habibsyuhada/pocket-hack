@@ -6,14 +6,14 @@ export default {
       "Fishing Boat Lost Signal",
     "Kapten Sari, Kepala Syahbandar":
       "Captain Sari, Harbor Master",
-    "KM Bahari 17 hilang kontak sejak badai dini hari. Modem kapalnya tidak menjawab, dan tidak tertaut ke jaringan kota. Nyalakan lagi layanan uplink di Stasiun Pantau, cek modemnya dengan PING, lalu jangkau lewat rute dari Pemancar FM (ROUTE, ◆90 — beli di Pasar Gelap). Ambil catatan posisi terakhir kapal.":
-      "KM Bahari 17 lost contact after the storm before dawn. Its modem does not answer and is not linked to the city network. Restart the uplink service at the Monitoring Station, check the modem with PING, then reach it through a route from the FM Transmitter (ROUTE, ◆90 — buy it at the Black Market). Get the boat's last known position.",
+    "KM Bahari 17 hilang kontak sejak badai dini hari. Modem kapalnya tidak menjawab, dan tidak tertaut ke jaringan kota. Nyalakan lagi layanan uplink di Stasiun Pantau, pantau status modemnya di peta, lalu jangkau lewat rute dari Pemancar FM (ROUTE, ◆90 — beli di Pasar Gelap). Ambil catatan posisi terakhir kapal.":
+      "KM Bahari 17 lost contact after the storm before dawn. Its modem does not answer and is not linked to the city network. Restart the uplink service at the Monitoring Station, watch the modem's status on the map, then reach it through a route from the FM Transmitter (ROUTE, ◆90 — buy it at the Black Market). Get the boat's last known position.",
     "Stasiun Pantau Kapal":
       "Boat Monitoring Station",
     "Stasiun pantau syahbandar: memantau modem kapal nelayan lewat layanan uplink.\nTamu hanya melihat daftar kapal. Layanan uplink dikendalikan akun operator.":
       "Harbor master's monitoring station: tracks fishing-boat modems through the uplink service.\nGuests only see the boat list. The uplink service is controlled by the operator account.",
-    "DAFTAR KAPAL KELUAR\n\nKM Bahari 17 (Pak Jumadi + 4 awak) — berangkat 02.10, terakhir terpantau 03.12\nKM Mutiara 3 — kembali 05.40, aman\nKM Rezeki 5 — sandar, perbaikan\n\nCatatan jaga: tautan ke kapal diurus layanan \"uplink\" di stasiun ini. Sejak badai uplink mati; modem KM Bahari 17 tidak menjawab PING.\nModem kapal berdiri sendiri, tidak tertaut ke jaringan kota. Jalurnya hanya lewat menara Pemancar FM.":
-      "BOATS OUT\n\nKM Bahari 17 (Pak Jumadi + 4 crew) — departed 02:10, last seen 03:12\nKM Mutiara 3 — returned 05:40, safe\nKM Rezeki 5 — docked, under repair\n\nDuty note: the link to the boats is handled by the \"uplink\" service at this station. Since the storm the uplink is down; KM Bahari 17's modem does not answer PING.\nThe boat modem stands alone, not linked to the city network. The only route is through the FM Transmitter tower.",
+    "DAFTAR KAPAL KELUAR\n\nKM Bahari 17 (Pak Jumadi + 4 awak) — berangkat 02.10, terakhir terpantau 03.12\nKM Mutiara 3 — kembali 05.40, aman\nKM Rezeki 5 — sandar, perbaikan\n\nCatatan jaga: tautan ke kapal diurus layanan \"uplink\" di stasiun ini. Sejak badai uplink mati; modem KM Bahari 17 tampil OFFLINE di peta.\nModem kapal berdiri sendiri, tidak tertaut ke jaringan kota. Jalurnya hanya lewat menara Pemancar FM.":
+      "BOATS OUT\n\nKM Bahari 17 (Pak Jumadi + 4 crew) — departed 02:10, last seen 03:12\nKM Mutiara 3 — returned 05:40, safe\nKM Rezeki 5 — docked, under repair\n\nDuty note: the link to the boats is handled by the \"uplink\" service at this station. Since the storm the uplink is down; KM Bahari 17's modem shows OFFLINE on the map.\nThe boat modem stands alone, not linked to the city network. The only route is through the FM Transmitter tower.",
     "LOG STASIUN\n\n[03:12] uplink: sinyal KM Bahari 17 melemah\n[03:15] uplink: berhenti (listrik padam akibat badai)\n[03:20] operator: nyalakan lagi (START) setelah listrik pulih, lalu cek kapal dari menara.\n[05:50] operator: listrik sudah pulih. Uplink belum sempat dinyalakan.":
       "STATION LOG\n\n[03:12] uplink: KM Bahari 17 signal weakening\n[03:15] uplink: stopped (power cut by the storm)\n[03:20] operator: start it again (START) once power returns, then check the boat from the tower.\n[05:50] operator: power is back. Uplink has not been started yet.",
     "Tautan satelit ke kapal nelayan. Sedang mati.":
@@ -54,8 +54,8 @@ export default {
       "The fishermen's emergency channel is 16 (channel 9 is for cargo ships).",
     "TEMPELAN DERMAGA\n\n- Jual jaring bekas, tanya Pak Karto.\n- Stasiun Pantau: kalau uplink mati, login akun \"operator\" sandi \"dermaga17\".\n  (Kunci pos jaga ada di bawah pot.)\n- Perahu Pak Udin dijual murah.":
       "DOCK NOTICES\n\n- Used fishing nets for sale, ask Pak Karto.\n- Monitoring Station: if the uplink is down, log in with account \"operator\" password \"dermaga17\".\n  (Guardhouse key is under the pot.)\n- Pak Udin's boat on sale, cheap.",
-    "CATATAN MENARA\n\nAntena menara masih memancar ke laut. Modem kapal yang lepas dari jaringan kota tetap bisa dijangkau dengan ROUTE dari menara ini,\nasal modem itu sudah menjawab (online) dan kamu punya akses user di sini.\nCek dulu dengan PING.":
-      "TOWER NOTES\n\nThe tower antenna still transmits out to sea. A boat modem that has dropped off the city network can still be reached with ROUTE from this tower,\nas long as the modem is answering (online) and you have user access here.\nCheck with PING first.",
+    "CATATAN MENARA\n\nAntena menara masih memancar ke laut. Modem kapal yang lepas dari jaringan kota tetap bisa dijangkau dengan ROUTE dari menara ini,\nasal modem itu sudah menjawab (online) dan kamu punya akses user di sini.\nCek dulu statusnya di peta.":
+      "TOWER NOTES\n\nThe tower antenna still transmits out to sea. A boat modem that has dropped off the city network can still be reached with ROUTE from this tower,\nas long as the modem is answering (online) and you have user access here.\nCheck its status on the map first.",
     "Masuk ke Stasiun Pantau sebagai operator":
       "Log in to the Monitoring Station as the operator",
     "Nyalakan layanan uplink (modem kapal online)":
@@ -72,8 +72,8 @@ export default {
       "The operator account is stuck on the community hall printer: read tempelan_dermaga.txt on the Community Hall Printer.",
     "CONNECT ke Stasiun Pantau Kapal lalu LOGIN sebagai operator.":
       "CONNECT to the Boat Monitoring Station, then LOGIN as the operator.",
-    "Buka Service Server stasiun dan START uplink. Setelah itu PING modem untuk memastikan online.":
-      "Open the station's Service Server and START uplink. Then PING the modem to make sure it is online.",
+    "Buka Service Server stasiun dan START uplink. Setelah itu cek di peta: modem harus tampil online.":
+      "Open the station's Service Server and START uplink. Then check the map: the modem should show online.",
     "Modem kapal tidak tertaut. CONNECT ke Pemancar FM (akses user), lalu ROUTE ke Modem Satelit KM Bahari 17.":
       "The boat modem is not linked. CONNECT to the FM Transmitter (user access), then ROUTE to Satellite Modem KM Bahari 17.",
     "Posisi terkunci loop GPS. Buka Service Server modem dan STOP gpsloop.":
@@ -90,8 +90,8 @@ export default {
       "Harbor Master — fishing boat lost signal after the storm.",
     "KM Bahari 17 hilang kontak sejak badai. Lima orang di dalamnya.":
       "KM Bahari 17 lost contact in the storm. Five people aboard.",
-    "Modem kapal mati dan tidak tertaut ke jaringan kota. Kamu cek dengan PING, hidupkan uplink, lalu masuk lewat Pemancar FM.":
-      "The boat's modem is dead and not linked to the city network. Check it with PING, bring the uplink up, then get in through the FM Transmitter.",
+    "Modem kapal mati dan tidak tertaut ke jaringan kota. Kamu cek statusnya di peta, hidupkan uplink, lalu masuk lewat Pemancar FM.":
+      "The boat's modem is dead and not linked to the city network. Check its status on the map, bring the uplink up, then get in through the FM Transmitter.",
     "Itu butuh ROUTE dari Pasar Gelap. Cepat ya. Saya butuh posisi mereka.":
       "That needs ROUTE from the Black Market. Be quick. I need their position.",
     "Saya berangkat sekarang.":

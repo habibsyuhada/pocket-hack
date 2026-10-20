@@ -12,7 +12,7 @@ import { haptic } from './haptics.js';
 const CMD_CUE = {
   CONNECT: 'cmdConnect', DISCONNECT: 'cmdDisconnect', SCAN: 'cmdScan', INSPECT: 'cmdInspect', LOGIN: 'cmdLogin', CRACK: 'cmdCrack',
   EXPLOIT: 'cmdExploit', ELEVATE: 'cmdElevate', READ: 'cmdRead', DOWNLOAD: 'cmdDownload', UPLOAD: 'cmdUpload', RECOVER: 'cmdRecover',
-  DECRYPT: 'cmdDecrypt', COMPARE: 'cmdCompare', ROUTE: 'cmdRoute', TRACE: 'cmdTrace', EDIT: 'cmdEdit', PING: 'cmdPing',
+  DECRYPT: 'cmdDecrypt', COMPARE: 'cmdCompare', ROUTE: 'cmdRoute', TRACE: 'cmdTrace', EDIT: 'cmdEdit',
   STOP: 'cmdStop', START: 'cmdStart', CONFIG: 'cmdConfig', RESTORE: 'cmdConfig', CONTROL: 'cmdControl', SEARCH: 'cmdSearch',
   LS: 'cmdFiles', PS: 'cmdFiles', MAP: 'tab'
 };

@@ -31,16 +31,6 @@ function game(extra = {}) {
 }
 const act = (ctx, target, cmd) => getActions(ctx, target).find((x) => x.cmd === cmd);
 
-describe('PING', () => {
-  it('is free to use and reports online / offline', () => {
-    const ctx = game(); ctx.run.devices.c.discovered = true;
-    expect(act(ctx, dev('a'), 'PING').enabled).toBe(true);
-    expect(exec(ctx, 'PING', dev('a')).out.some((l) => /ms/.test(l.text))).toBe(true);
-    expect(exec(ctx, 'PING', dev('c')).out.some((l) => /offline/.test(l.text))).toBe(true);
-    expect(commandTargets(ctx, 'PING').map((r) => r.target.id)).toContain('a');
-  });
-});
-
 describe('ROUTE', () => {
   it('needs the command, admin access on the relay, and an online destination', () => {
     const ctx = game(); exec(ctx, 'CONNECT', dev('a'));

@@ -37,7 +37,6 @@ const NO_TARGET = {
   ELEVATE: 'Tidak ada jalur untuk menaikkan hak akses di sini.',
   INSPECT: 'Tidak ada yang bisa diperiksa.',
   SEARCH: 'Tidak ada file untuk dipindai di node ini.',
-  PING: 'Tidak ada perangkat yang terlihat. Jalankan SCAN dulu.',
   ROUTE: 'Node ini tidak punya relay ke jaringan lain.',
   UPLOAD: 'Tidak ada file lokal yang bisa dikirim ke node ini.',
   EDIT: 'Tidak ada file yang bisa diubah di node ini.',

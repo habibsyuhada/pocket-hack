@@ -101,7 +101,7 @@ export default {
     { when: (r) => !hasLocal(r, 's20_patch'), text: 'Di Server Vendor Sensor ada dua patch. Tiketnya menyebut sensor SN-200: ambil patch_sensor_v2.bin dengan DOWNLOAD.' },
     { when: (r) => r.devices.s20_sensor.access === 'none', text: 'CONNECT ke Sensor Suhu SN-200, lalu LOGIN dengan akun servis dari tiket.' },
     { when: (r) => !r.flags.includes('s20_patched'), text: 'Sudah di sensor? Pilih patch_sensor_v2.bin di perangkatmu lalu UPLOAD. Patch lama hanya bikin sensor salah baca.' },
-    { when: (r) => !r.devices.s20_kompresor.online, text: 'Coba PING kompresor — kalau belum menjawab, patch belum masuk.' },
+    { when: (r) => !r.devices.s20_kompresor.online, text: 'Cek kompresor di peta — kalau masih OFFLINE, patch belum masuk.' },
     { when: (r) => komp(r).state !== 'NORMAL', text: 'CONNECT ke Kompresor Gudang, lalu CONTROL → Mode Kompresor → NORMAL. Hindari TURBO.' }
   ],
   endings: [
