@@ -459,27 +459,32 @@ button:active:not(:disabled):not(.node):not(.site-pin) { transform: scale(0.97);
   background: linear-gradient(180deg, color-mix(in srgb, var(--pc) 55%, #0b1510), color-mix(in srgb, var(--pc) 18%, #05100c)); border: 1px solid color-mix(in srgb, var(--pc) 60%, transparent); opacity: 0.85; }
 .portrait-ph .ph-letter { position: absolute; top: 24%; font-size: 84px; font-weight: 700; color: rgba(255,255,255,0.28); }
 .portrait-ph small { position: absolute; bottom: 10px; color: rgba(255,255,255,0.4); font-size: 10px; letter-spacing: 1px; }
-.dlg-box { position: relative; margin: 0 10px calc(10px + var(--safe-b)); padding: 14px 16px 12px; border: 1px solid var(--green-dim); border-radius: 16px;
+.dlg-box { position: relative; margin: 0 10px calc(10px + var(--safe-b)); padding: 10px 16px 6px; border: 1px solid var(--green-dim); border-radius: 16px;
   background: rgba(8,16,12,0.94); box-shadow: 0 -6px 24px rgba(0,0,0,0.5), var(--glow-sm); cursor: pointer;
-  /* fixed size: long text is paged in JS, long menus scroll inside .dlg-menu */
-  flex: none; height: clamp(304px, 48vh, 400px); display: flex; flex-direction: column; overflow: hidden; }
+  /* fixed size, at most a third of the screen: long text is paged in JS, choices float above in .dlg-menu */
+  flex: none; height: 33.33vh; display: flex; flex-direction: column; overflow: hidden; }
 .dlg-name { display: inline-block; padding: 3px 12px; border-radius: 999px; background: var(--green); color: #04110b; font-size: 12px; font-weight: 700; letter-spacing: 0.5px; }
 .dlg-name.you { background: var(--cyan); }
-.dlg-text { flex: none; height: 96px; margin-top: 8px; font-size: 15px; line-height: 1.6; color: var(--ink); white-space: pre-wrap; overflow: hidden; }
+.dlg-text { flex: 1; min-height: 0; margin-top: 6px; font-size: 15px; line-height: 1.6; color: var(--ink); white-space: pre-wrap; overflow: hidden; }
 .dlg-next { flex: none; height: 20px; line-height: 20px; text-align: right; color: var(--green); font-size: 16px; opacity: 0; }
 .dlg-next.on { opacity: 1; animation: nudge 0.9s ease-in-out infinite; }
 @keyframes nudge { 50% { transform: translateY(3px); } }
-.dlg-menu { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; margin-top: 2px; opacity: 0; pointer-events: none; transition: opacity 0.15s; }
+/* choices: over the portrait, just above the text box */
+.dlg-menu { position: absolute; left: 10px; right: 10px; bottom: calc(33.33vh + 18px + var(--safe-b)); max-height: calc(100% - 33.33vh - 90px - var(--safe-t) - var(--safe-b)); z-index: 2;
+  overflow-y: auto; display: flex; flex-direction: column; gap: 8px; opacity: 0; pointer-events: none; transition: opacity 0.15s; }
 .dlg-menu.on { opacity: 1; pointer-events: auto; }
 .dlg-menu.hub { display: grid; grid-template-columns: 1fr 1fr; align-content: start; }
 .dlg-menu.hub .dlg-opt.hot:first-child:nth-last-child(odd) { grid-column: 1 / -1; }
-.dlg-opt { padding: 10px 12px; border: 1px solid var(--green-dim); border-radius: 12px; background: var(--green-ghost); color: var(--green); font-size: 14px; text-align: left; }
-.dlg-opt.hot { border-color: var(--amber); color: var(--amber); background: rgba(240,194,74,0.08); }
-.dlg-opt.dim { border-color: var(--line); color: var(--muted); background: transparent; }
+.dlg-opt { padding: 10px 12px; border: 1px solid var(--green-dim); border-radius: 12px; background: #0b1a13; box-shadow: 0 2px 10px rgba(0,0,0,0.5); color: var(--green); font-size: 14px; text-align: left; }
+.dlg-opt.hot { border-color: var(--amber); color: var(--amber); background: #1d1a0c; }
+.dlg-opt.dim { border-color: var(--line); color: var(--muted); background: #0a110e; }
 .dlg-opt.off { opacity: 0.45; }
-.dlg-offer { display: flex; justify-content: space-between; gap: 10px; padding: 8px 4px; color: var(--muted); font-size: 12px; }
+.dlg-offer { display: flex; justify-content: space-between; gap: 10px; padding: 6px 12px; border-radius: 10px; background: rgba(5,10,8,0.88); color: var(--muted); font-size: 12px; }
 .dlg-offer b { color: var(--ink); }
 .district-tag { position: absolute; transform: translate(-50%, -50%); font-size: 11px; font-weight: 700; letter-spacing: 2px; color: var(--green-dim); white-space: nowrap; pointer-events: none; text-transform: uppercase; opacity: 0.7; }
+.node.fx-sonar { position: absolute; }   /* keep the map position while the sonar ring plays */
+.node.fx-pop { animation-name: fx-node-pop; }
+@keyframes fx-node-pop { 0% { transform: translate(-50%, -50%) scale(.6); opacity: 0; } 65% { transform: translate(-50%, -50%) scale(1.08); opacity: 1; } 100% { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
 .node.hub { border-color: rgba(120,200,230,0.45); }
 .node.hub .nm .ic-svg { color: var(--cyan); }
 

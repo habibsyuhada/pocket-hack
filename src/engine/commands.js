@@ -9,12 +9,12 @@ import { t, tr } from '../i18n/index.js';
 export const CMD_META = {
   // Eksplorasi
   SCAN: { group: 'explore', kind: 'scan', desc: 'Pindai jaringan dari sini.' },
+  CONNECT: { group: 'explore', kind: 'connect', desc: 'Hubungkan ke perangkat.' },
   INSPECT: { group: 'explore', kind: 'device', desc: 'Periksa perangkat terhubung.' },
   MAP: { group: 'explore', kind: 'map', desc: 'Buka peta jaringan.' },
   PING: { group: 'explore', kind: 'ping', desc: 'Cek apakah node online (gratis).' },
   ROUTE: { group: 'explore', kind: 'route', desc: 'Lompat lewat relay ke jaringan lain.' },
   // Akses
-  CONNECT: { group: 'access', kind: 'connect', desc: 'Hubungkan ke perangkat.' },
   LOGIN: { group: 'access', kind: 'device', desc: 'Masuk dengan kredensial.' },
   CRACK: { group: 'access', kind: 'device', desc: 'Pecahkan sandi via puzzle.' },
   EXPLOIT: { group: 'access', kind: 'device', desc: 'Manfaatkan celah layanan.' },

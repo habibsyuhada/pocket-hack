@@ -863,8 +863,8 @@ export class App {
       h('div', { class: 'dlg-box', onclick: () => this.dlgAdvance() },
         h('div', { class: 'dlg-name' + (you ? ' you' : '') }, you ? 'Kamu' : npc.name),
         h('div', { class: 'dlg-text', 'data-full': d.pages[d.pi] }, d.pages[d.pi]),
-        h('div', { class: 'dlg-next' + (d.typedKey === d.key && (d.mode === 'scene' || !lastPage) ? ' on' : '') }, d.mode === 'scene' || !lastPage ? '▾' : ''),
-        menu));
+        h('div', { class: 'dlg-next' + (d.typedKey === d.key && (d.mode === 'scene' || !lastPage) ? ' on' : '') }, d.mode === 'scene' || !lastPage ? '▾' : '')),
+      menu);                                                    // choices float above the box, over the portrait
   }
 
   // ---------- intro ----------
