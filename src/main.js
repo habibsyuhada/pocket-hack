@@ -8,6 +8,7 @@ import { App } from './ui/app.js';
 
 const root = document.getElementById('app');
 const app = new App(root);
+if (import.meta.env.DEV) window.__app = app;   // dev-only handle for playtests
 fx.init();
 app.boot();
 

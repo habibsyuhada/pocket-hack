@@ -255,6 +255,7 @@ export const vfx = {
 
   rain(on) {
     rainOn = !!on && eff() === 'full';
+    if (!rainOn) parts = parts.filter((q) => !q.rain);   // loading is over: clear the glyphs off the content
     if (rainOn && ensure()) startLoop();
   },
 };

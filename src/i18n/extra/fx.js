@@ -12,7 +12,12 @@ export default {
     "tes suara & getar": "test sound & vibration",
     "SELESAI": "DONE",
     " rep": " rep",
-    "> menunggu operator_": "> waiting for operator_"
+    "> menunggu operator_": "> waiting for operator_",
+    "Ke Safehouse": "Go to Safehouse",
+    "Bantuan": "Help",
+    "legenda peta & cara bermain": "map legend & how to play",
+    "Cara bermain": "How to play",
+    "Ketuk perangkat di Peta untuk terhubung, lalu pakai CMDS di Terminal. Bicara dengan orang untuk ambil misi, kerjakan di jaringan, lalu serahkan hasilnya. Fokus habis? Tidur di Safehouse.": "Tap a device on the Map to connect, then use CMDS in the Terminal. Talk to people to take missions, work them on the network, then hand in the result. Out of Focus? Sleep at the Safehouse."
   },
-  same: ["> rig.init ........ OK", "> uplink: isp_core ... OK"]
+  same: ["dlg-menu hub", "zoom-btn home", "> rig.init ........ OK", "> uplink: isp_core ... OK"]
 };

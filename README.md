@@ -54,7 +54,7 @@ Cek kualitas audio: `node tools/render-audio.mjs [dir]` merender semua suara sec
 ## Navigasi
 
 Bottom bar: **Peta · Terminal · Goals · Profil**. **Pasar Gelap** (Selatan) dan **Biro Kontrak**
-adalah node di peta, bukan tab. Profil adalah menu: Inventory, Kontak, Tool & Command, Arsip, Pengaturan. Terminal punya
+adalah node di peta, bukan tab. Profil adalah menu: Inventory, Kontak, Tool & Command, Arsip, Bantuan (legenda peta), Pengaturan. Tombol rumah di peta menggeser kamera ke Safehouse. Kotak dialog berukuran tetap; teks panjang dipecah per halaman. Terminal punya
 tombol **CMDS** (grup Eksplorasi, Akses, Server, Automation). Command
 **Server** (`FILES`, `SERVICES`, `CONTROL`) membuka halaman File / Service /
 Control node yang terhubung; `READ`, `DOWNLOAD`, `DECRYPT`, `STOP`, `START`,

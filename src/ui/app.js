@@ -6,6 +6,7 @@ import { hasCmd, loadMs } from '../game/profile.js';
 import { DEFAULT_CMDS } from '../engine/commands.js';
 import { CITY as CITY_INFO, WORLD_NODES, DIFF_LABEL, nodeFor, worldNodes, isAccepted, offersFrom, waitingOn } from '../game/world.js';
 import { CITY as NET, START_NODES, CITY_VERSION, DISTRICTS } from '../city/index.js';
+import { paginate } from './paginate.js';
 import { MAPW, MAPH, cellXY, SAFEHOUSE_CELL, MARKET_CELL, CONTRACT_CELL } from '../city/layout.js';
 import { greetingFor, talkSceneFor, offerSceneFor, noOfferLine, giftLines, turnInSceneFor, thanksLine } from '../game/dialogues.js';
 import { readyFrom, endingsFor, awaitingTurnIn } from '../game/turnin.js';
@@ -596,6 +597,8 @@ export class App {
 
   dlgSay(line) {
     this.dlg.line = line;
+    this.dlg.pages = paginate(line.text);
+    this.dlg.pi = 0;
     this.dlg.key = (this._dk = (this._dk || 0) + 1);
     this.render();
   }
@@ -613,6 +616,12 @@ export class App {
     const d = this.dlg;
     if (!d || this.busy) return;
     if (this.finishTyping()) return;
+    if (d.pi < d.pages.length - 1) {                         // long line: next page of the same line
+      d.pi += 1;
+      d.key = (this._dk += 1);
+      this.render();
+      return;
+    }
     if (d.mode !== 'scene') return;
     d.i += 1;
     if (d.i < d.lines.length) this.dlgSay(d.lines[d.i]);
@@ -744,6 +753,7 @@ export class App {
 
   dlgClose() {
     clearInterval(this._typeT);
+    this._typeT = null;
     this.dlg = null;
     this.render();
   }
@@ -770,12 +780,14 @@ export class App {
   endTyping() {
     clearInterval(this._typeT);
     this._typeT = null;
+    if (!this.dlg) return;
     this.dlg.typedKey = this.dlg.key;
-    this.root.querySelectorAll('.dlg-next, .dlg-menu').forEach((e) => e.classList.add('on'));
+    const last = this.dlg.pi >= this.dlg.pages.length - 1;
+    this.root.querySelectorAll(last ? '.dlg-next, .dlg-menu' : '.dlg-next').forEach((e) => e.classList.add('on'));
   }
 
   finishTyping() {
-    if (!this._typeT || this.dlg.typedKey === this.dlg.key) return false;
+    if (!this._typeT || !this.dlg || this.dlg.typedKey === this.dlg.key) return false;
     const el = this.root.querySelector('.dlg-text');
     if (el) el.textContent = el.dataset.full || '';
     this.endTyping();
@@ -788,7 +800,8 @@ export class App {
     const you = d.line.who === 'you';
     const ph = PLACEHOLDER[d.npc] || { color: '#6a7', initial: '?' };
     const src = portraitSrc(d.npc, d.line.mood);
-    const ready = d.typedKey === d.key ? ' on' : '';
+    const lastPage = d.pi >= d.pages.length - 1;
+    const ready = d.typedKey === d.key && lastPage ? ' on' : '';
     const portrait = src
       ? h('img', { class: 'portrait-img' + (you ? ' dim' : ''), src, alt: npc.name })
       : h('div', { class: 'portrait-ph' + (you ? ' dim' : ''), style: `--pc:${ph.color}` },
@@ -800,7 +813,7 @@ export class App {
       const talked = !canTalk(this.profile, d.npc), gifted = !canGift(this.profile, d.npc);
       const jobs = offersFrom(this.profile, d.npc).length;
       const handIn = readyFrom(this.ctx, this.profile, d.npc).length;
-      menu = h('div', { class: 'dlg-menu' + ready },
+      menu = h('div', { class: 'dlg-menu hub' + ready },
         handIn > 0 && h('button', { class: 'dlg-opt hot', onclick: (e) => { e.stopPropagation(); this.dlgTurnIn(); } }, 'Serahkan tugas ✓'),
         h('button', { class: 'dlg-opt' + (talked ? ' off' : ''), onclick: (e) => { e.stopPropagation(); this.dlgTalk(); } }, talked ? t('Ngobrol · lagi {1}', fmtWait(talkWait(this.profile, d.npc))) : 'Ngobrol · ⚡2'),
         h('button', { class: 'dlg-opt' + (gifted ? ' off' : ''), onclick: (e) => { e.stopPropagation(); this.dlgGiftOpen(); } }, gifted ? t('Beri hadiah · lagi {1}', fmtWait(giftWait(this.profile, d.npc))) : 'Beri hadiah'),
@@ -849,8 +862,8 @@ export class App {
       h('div', { class: 'dlg-stage' + this.enterCls('portrait', `${this.idOf(d)}`, 'fx-slide-in-left') }, portrait),
       h('div', { class: 'dlg-box', onclick: () => this.dlgAdvance() },
         h('div', { class: 'dlg-name' + (you ? ' you' : '') }, you ? 'Kamu' : npc.name),
-        h('div', { class: 'dlg-text', 'data-full': d.line.text }, d.line.text),
-        d.mode === 'scene' && h('div', { class: 'dlg-next' + ready }, '▾'),
+        h('div', { class: 'dlg-text', 'data-full': d.pages[d.pi] }, d.pages[d.pi]),
+        h('div', { class: 'dlg-next' + (d.typedKey === d.key && (d.mode === 'scene' || !lastPage) ? ' on' : '') }, d.mode === 'scene' || !lastPage ? '▾' : ''),
         menu));
   }
 
@@ -1071,7 +1084,7 @@ export class App {
 
     const vp = h('div', { class: 'worldmap pan' }, inner,
       h('div', { class: 'zoom-btns' },
-        h('button', { class: 'zoom-btn small', title: 'Legenda', onclick: () => { this.overlay = { kind: 'legend' }; this.render(); } }, '?'),
+        h('button', { class: 'zoom-btn home', title: 'Ke Safehouse', onclick: () => this.focusHome() }, this.ic('home')),
         h('button', { class: 'zoom-btn', onclick: () => this.zoomBy(1.25) }, '+'),
         h('button', { class: 'zoom-btn', onclick: () => this.zoomBy(0.8) }, '−')),
       perksFor(this.profile).event && h('div', { class: 'map-tag' }, h('b', { class: 'ev' }, `★ ${perksFor(this.profile).event.name}`)));
@@ -1090,6 +1103,20 @@ export class App {
     }
     if (inner && this.mapView) inner.style.transform = `translate(${this.mapView.x}px,${this.mapView.y}px) scale(${this.mapView.scale})`;
     if (this.mapView) this._lastT = { ...this.mapView };
+  }
+
+  // glide the camera to the safehouse
+  focusHome() {
+    const vp = this.root.querySelector('.worldmap.pan'); if (!vp || !this.mapView) return;
+    const home = cellXY(SAFEHOUSE_CELL), r = vp.getBoundingClientRect();
+    const inner = vp.querySelector('.map-inner');
+    const scale = Math.max(this.mapView.scale, 0.8);
+    this.mapView = { scale, x: r.width / 2 - home.x * scale, y: r.height / 2 - home.y * scale };
+    if (inner && settings.vfx !== 'off') {
+      inner.style.transition = 'transform 420ms cubic-bezier(.2,.8,.2,1)';
+      setTimeout(() => { inner.style.transition = ''; }, 460);
+    }
+    this.applyMapT(inner);
   }
 
   zoomBy(f) {
@@ -1193,7 +1220,7 @@ export class App {
     const sub = this.profileSub;
     if (!sub) return this.profileMenu();
     const pages = { bag: ['Inventory', () => this.profileBag()], contacts: ['Kontak', () => this.profileContacts()],
-      tools: ['Tool & Command', () => this.profileTools()], archive: ['Arsip', () => this.profileArchive()], settings: ['Pengaturan', () => this.profileSettings()] };
+      tools: ['Tool & Command', () => this.profileTools()], archive: ['Arsip', () => this.profileArchive()], settings: ['Pengaturan', () => this.profileSettings()], help: ['Bantuan', () => this.profileHelp()] };
     const [title, body] = pages[sub];
     return [h('button', { class: 'back-row', onclick: () => { this.profileSub = null; this.render(); } }, this.ic('back'), ' Profil'),
       h('h2', { style: 'margin:6px 0 10px' }, title), ...body()];
@@ -1224,8 +1251,38 @@ export class App {
         entry('contacts', 'users', 'Kontak', t('{1} dikenal', known)),
         entry('tools', 'wrench', 'Tool & Command', t('{1} tool · {2} command', Object.values(this.profile.tools).filter(Boolean).length, (this.profile.cmds || []).length)),
         entry('archive', 'file', 'Arsip', t('{1} file', this.profile.archive.length)),
+        entry('help', 'help', 'Bantuan', 'legenda peta & cara bermain'),
         entry('settings', 'gear', 'Pengaturan', 'bahasa, reset progres'))
     ];
+  }
+
+  // Help page (Profil → Bantuan): the map legend lives here instead of on the map.
+  profileHelp() {
+    const h = this.h.bind(this);
+    const row = (sw, name, desc) => h('div', { class: 'lg-row' }, sw, h('div', {}, h('b', {}, name), h('small', {}, desc)));
+    const mini = (cls, txt) => h('span', { class: 'lg-card ' + cls }, txt);
+    const tok = (cls, txt, color) => h('span', { class: 'lg-token ' + cls, style: `--pc:${color}` }, txt);
+    return [
+      h('div', { class: 'section-h' }, 'Cara bermain'),
+      h('div', { class: 'setting-note' }, 'Ketuk perangkat di Peta untuk terhubung, lalu pakai CMDS di Terminal. Bicara dengan orang untuk ambil misi, kerjakan di jaringan, lalu serahkan hasilnya. Fokus habis? Tidur di Safehouse.'),
+      h('div', { class: 'section-h' }, 'Perangkat'),
+      row(mini('', 'PC'), 'Perangkat biasa', 'Kartu persegi gelap. Ketuk untuk perintah.'),
+      row(mini('hub', 'AP'), 'Hotspot distrik', 'Bingkai biru. Pintu masuk tiap distrik.'),
+      row(mini('m-active', 'K-00'), 'Node misi aktif', 'Bingkai hijau + kode misi. Terlibat di misi yang kamu ambil.'),
+      row(mini('m-done', 'K-00'), 'Node misi selesai', 'Pudar. Sudah tidak dipakai misi.'),
+      row(mini('cur', '●'), 'Sedang terhubung', 'Bingkai terang berdenyut. Garis ke tetangganya menyala.'),
+      row(mini('near', '→'), 'Bisa dijangkau', 'Bingkai putus-putus: terhubung langsung ke node-mu sekarang (muncul di CMDS → CONNECT).'),
+      row(mini('far', '…'), 'Jauh', 'Kartu redup: tidak terhubung langsung. Telusuri lewat tetangganya.'),
+      h('div', { class: 'section-h' }, 'Orang & tempat'),
+      row(tok('person', 'L', '#e8a35a'), 'Orang (NPC)', 'Lingkaran berwarna. Ketuk untuk bicara.'),
+      row(h('span', { class: 'lg-badge job' }, '★'), 'Ada kerjaan', 'Mereka menawarkan misi.'),
+      row(h('span', { class: 'lg-badge turn' }, '✓'), 'Serahkan tugas', 'Misi mereka siap diserahkan.'),
+      row(h('span', { class: 'lg-badge talk' }, '●'), 'Bisa ngobrol', 'Belum ngobrol hari ini.'),
+      row(tok('home', '⌂', '#f0c24a'), 'Safehouse', 'Tempat tidur untuk memulihkan Fokus.'),
+      row(tok('shop', '▤', '#4fd1c5'), 'Biro Kontrak', 'Ambil dan cek kontrak perawatan harian.'),
+      row(tok('shop', '◆', '#ff8f5a'), 'Pasar Gelap', 'Beli tool, command, intel, dan upgrade. Ada di distrik Selatan.'),
+      h('div', { class: 'section-h' }, 'Level akses'),
+      h('div', { class: 'lg-lv' }, h('span', { class: 'lv-guest' }, 'TAMU'), h('span', { class: 'lv-user' }, 'USER'), h('span', { class: 'lv-admin' }, 'ADMIN'))];
   }
 
   profileBag() {
@@ -1502,30 +1559,6 @@ export class App {
       sheet.append(h('h2', {}, 'Biro Kontrak'),
         h('p', { style: 'color:var(--muted);font-size:13px;margin:4px 0 12px' }, 'Klien yang puas menawarkan kontrak perawatan harian: sambung ke node awal misinya, buka File Server, dan kredit masuk.'),
         ...(rows.length ? rows : [h('div', { class: 'empty' }, 'Belum ada kontrak.\nSelesaikan sebuah misi dulu — kliennya akan menawarkan kontrak di sini.')]),
-        h('button', { class: 'act dim', onclick: close }, 'TUTUP'));
-    } else if (o.kind === 'legend') {
-      const row = (sw, name, desc) => h('div', { class: 'lg-row' }, sw, h('div', {}, h('b', {}, name), h('small', {}, desc)));
-      const mini = (cls, txt) => h('span', { class: 'lg-card ' + cls }, txt);
-      const tok = (cls, txt, color) => h('span', { class: 'lg-token ' + cls, style: `--pc:${color}` }, txt);
-      sheet.append(h('h2', {}, 'Legenda peta'),
-        h('div', { class: 'section-h' }, 'Perangkat'),
-        row(mini('', 'PC'), 'Perangkat biasa', 'Kartu persegi gelap. Ketuk untuk perintah.'),
-        row(mini('hub', 'AP'), 'Hotspot distrik', 'Bingkai biru. Pintu masuk tiap distrik.'),
-        row(mini('m-active', 'K-00'), 'Node misi aktif', 'Bingkai hijau + kode misi. Terlibat di misi yang kamu ambil.'),
-        row(mini('m-done', 'K-00'), 'Node misi selesai', 'Pudar. Sudah tidak dipakai misi.'),
-        row(mini('cur', '●'), 'Sedang terhubung', 'Bingkai terang berdenyut. Garis ke tetangganya menyala.'),
-        row(mini('near', '→'), 'Bisa dijangkau', 'Bingkai putus-putus: terhubung langsung ke node-mu sekarang (muncul di CMDS → CONNECT).'),
-        row(mini('far', '…'), 'Jauh', 'Kartu redup: tidak terhubung langsung. Telusuri lewat tetangganya.'),
-        h('div', { class: 'section-h' }, 'Orang & tempat'),
-        row(tok('person', 'L', '#e8a35a'), 'Orang (NPC)', 'Lingkaran berwarna. Ketuk untuk bicara.'),
-        row(h('span', { class: 'lg-badge job' }, '★'), 'Ada kerjaan', 'Mereka menawarkan misi.'),
-        row(h('span', { class: 'lg-badge turn' }, '✓'), 'Serahkan tugas', 'Misi mereka siap diserahkan.'),
-        row(h('span', { class: 'lg-badge talk' }, '●'), 'Bisa ngobrol', 'Belum ngobrol hari ini.'),
-        row(tok('home', '⌂', '#f0c24a'), 'Safehouse', 'Tempat tidur untuk memulihkan Fokus.'),
-        row(tok('shop', '▤', '#4fd1c5'), 'Biro Kontrak', 'Ambil dan cek kontrak perawatan harian.'),
-        row(tok('shop', '◆', '#ff8f5a'), 'Pasar Gelap', 'Beli tool, command, intel, dan upgrade. Ada di distrik Selatan.'),
-        h('div', { class: 'section-h' }, 'Level akses'),
-        h('div', { class: 'lg-lv' }, h('span', { class: 'lv-guest' }, 'TAMU'), h('span', { class: 'lv-user' }, 'USER'), h('span', { class: 'lv-admin' }, 'ADMIN')),
         h('button', { class: 'act dim', onclick: close }, 'TUTUP'));
     } else if (o.kind === 'npcinfo') {
       const npc = npcById(o.id), st = npcState(this.profile, o.id), lv = levelOf(st.aff);
